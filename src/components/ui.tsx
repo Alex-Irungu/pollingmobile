@@ -93,20 +93,35 @@ export function DetailRow({
 // Status pill
 // --------------------------------------------------------------------------- //
 
-const STATUS_STYLE: Record<
-  SubmissionStatus,
-  { label: string; fg: string; bg: string }
-> = {
-  // "Awaiting review" rather than "Pending": it tells the agent someone else
-  // now has it, which is the thing they actually want to know.
+const STATUS_STYLE: Record<string, { label: string; fg: string; bg: string }> = {
+  // "Sent" and "Awaiting review" rather than the raw enum: they tell the agent
+  // someone else now has it, which is the thing they actually want to know.
+  SUBMITTED: { label: 'Sent', fg: colors.info, bg: colors.infoSurface },
   PENDING: { label: 'Awaiting review', fg: colors.pending, bg: colors.pendingSurface },
   VERIFIED: { label: 'Verified', fg: colors.verified, bg: colors.verifiedSurface },
   FLAGGED: { label: 'Flagged', fg: colors.flagged, bg: colors.flaggedSurface },
   REJECTED: { label: 'Rejected', fg: colors.rejected, bg: colors.rejectedSurface },
 };
 
+/**
+ * Turn an unrecognised status into something readable.
+ *
+ * "AWAITING_REVIEW" becomes "Awaiting review". Necessary because the backend's
+ * status vocabulary has changed once already and installed apps cannot be
+ * updated mid-election, so an unknown value must still render sensibly.
+ */
+function humanise(status: string): string {
+  const words = status.replace(/[_-]+/g, ' ').trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export function StatusPill({ status }: { status: SubmissionStatus }) {
-  const style = STATUS_STYLE[status] ?? STATUS_STYLE.PENDING;
+  const known = STATUS_STYLE[status];
+  const style = known ?? {
+    label: humanise(status),
+    fg: colors.inkMuted,
+    bg: colors.surfaceAlt,
+  };
   return (
     <View style={[styles.pill, { backgroundColor: style.bg }]}>
       <View style={[styles.pillDot, { backgroundColor: style.fg }]} />

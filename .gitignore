@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Temporary commit-message scratch file
+.commit_msg.tmp

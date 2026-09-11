@@ -214,7 +214,7 @@ export default function MyStationScreen() {
                 <StatusPill status={submission.status} />
               </View>
 
-              {submission.status === 'REJECTED' && submission.rejection_reason ? (
+              {submission.rejection_reason ? (
                 <View style={styles.reasonWrap}>
                   <Banner
                     tone="error"
@@ -224,17 +224,17 @@ export default function MyStationScreen() {
                 </View>
               ) : null}
 
-              {submission.status === 'VERIFIED' ? (
-                <Text style={styles.submissionNote}>
-                  The command centre has verified your result. Nothing further is
-                  needed.
-                </Text>
-              ) : submission.status === 'PENDING' ? (
-                <Text style={styles.submissionNote}>
-                  Your result has reached the command centre and is waiting to be
-                  reviewed.
-                </Text>
-              ) : null}
+              {/* Copy per status, with a neutral fallback. The status vocabulary
+                  has changed once already and an installed app cannot be updated
+                  mid-election, so an unrecognised value must still say something
+                  true rather than nothing. */}
+              <Text style={styles.submissionNote}>
+                {submission.status === 'VERIFIED'
+                  ? 'The command centre has verified your result. Nothing further is needed.'
+                  : submission.status === 'REJECTED'
+                    ? 'The command centre could not accept this result. Check Messages.'
+                    : 'Your result has reached the command centre. They will review it.'}
+              </Text>
 
               <DetailRow
                 label="Submitted"

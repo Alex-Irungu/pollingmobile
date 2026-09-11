@@ -230,7 +230,10 @@ export default function SubmitScreen() {
                 ? `The command centre asked for a correction: ${existing.rejection_reason || 'no reason given'}. Contact them in Messages -- they will reopen it for you.`
                 : 'Your result for this stream has reached the command centre. Check My Station for its progress.'
             }
-            action={{ label: 'Go to My Station', onPress: () => router.replace('/(app)') }}
+            action={{
+              label: 'Go to My Station',
+              onPress: () => router.replace('/(app)'),
+            }}
           />
         </View>
       </View>

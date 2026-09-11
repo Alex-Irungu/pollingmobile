@@ -138,6 +138,15 @@ composed, not when it is sent, so a retry over a flaky connection is stored
 once. Result submissions are protected by a unique constraint on
 `(race, polling_station)`, which the API reports as a 400 rather than a crash.
 
+**Submission status is treated as an open string, not an enum.** The backend's
+vocabulary has already changed once — it was
+`PENDING`/`VERIFIED`/`REJECTED`/`FLAGGED` until the verification workflow was
+removed, leaving only `SUBMITTED`. A deployed phone cannot be updated
+mid-election, so an unrecognised status is humanised for display
+(`AWAITING_REVIEW` → "Awaiting review") rather than crashing or rendering blank.
+Anything status-dependent has a neutral fallback. Apply the same caution to any
+other server-controlled vocabulary.
+
 ## Backend endpoints used
 
 | Endpoint | Purpose |

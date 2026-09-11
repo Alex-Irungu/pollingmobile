@@ -51,13 +51,31 @@ export interface BallotCandidate {
   ballot_number: number | null;
 }
 
-export type SubmissionStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'FLAGGED';
+/**
+ * Submission status.
+ *
+ * A plain string, NOT a closed union. The backend's vocabulary has already
+ * changed once -- it was PENDING/VERIFIED/REJECTED/FLAGGED until the
+ * verification workflow was removed, leaving only SUBMITTED. A deployed phone
+ * cannot be updated mid-election, so the app must render a status it has never
+ * seen rather than crash or show a blank. `KnownSubmissionStatus` exists only to
+ * give autocomplete on the values that currently have specific copy.
+ */
+export type KnownSubmissionStatus =
+  | 'SUBMITTED'
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'FLAGGED';
+
+export type SubmissionStatus = KnownSubmissionStatus | (string & {});
 
 export interface ExistingSubmission {
   id: string;
   status: SubmissionStatus;
   submitted_at: string;
-  rejection_reason: string;
+  /** Absent since the verification fields were removed; kept optional. */
+  rejection_reason?: string;
 }
 
 /** The single bootstrap payload: everything needed for the whole day. */
