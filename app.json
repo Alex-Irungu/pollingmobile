@@ -1,0 +1,62 @@
+{
+  "expo": {
+    "name": "Sentinel Agent",
+    "slug": "sentinel-agent",
+    "scheme": "sentinelagent",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#014131"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ke.sentinel.agent",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Sentinel needs the camera so you can photograph the result declaration form at your polling station.",
+        "NSPhotoLibraryUsageDescription": "Sentinel needs photo access so you can attach a picture you have already taken.",
+        "NSMicrophoneUsageDescription": "Sentinel needs the microphone so you can send voice notes to the command centre when typing is impractical."
+      }
+    },
+    "android": {
+      "package": "ke.sentinel.agent",
+      "adaptiveIcon": {
+        "backgroundColor": "#014131",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-audio",
+      "expo-image",
+      "expo-splash-screen",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Sentinel needs the camera so you can photograph the result declaration form."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Sentinel needs photo access so you can attach a picture you have already taken."
+        }
+      ]
+    ]
+  }
+}
