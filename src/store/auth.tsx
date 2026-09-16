@@ -18,8 +18,10 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { setSessionExpiredHandler } from '../api/client';
 import * as api from '../api/endpoints';
@@ -68,6 +70,33 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('restoring');
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  // Re-lock every time the app returns from the background, not just on cold
+  // start. Without this, enabling biometrics only ever gated the very first
+  // launch of the process -- switching away and back left the app wide open,
+  // which defeats the point of the toggle.
+  useEffect(() => {
+    let previousState: AppStateStatus = AppState.currentState;
+
+    const subscription = AppState.addEventListener('change', async (next) => {
+      const previous = previousState;
+      previousState = next;
+
+      const cameToForeground =
+        (previous === 'background' || previous === 'inactive') && next === 'active';
+      if (!cameToForeground) return;
+      if (statusRef.current !== 'signedIn') return;
+
+      const biometricEnabled = await getBiometricEnabled();
+      if (biometricEnabled) setStatus('locked');
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const signOut = useCallback(async () => {
     // A signed-out device must not keep reporting a position for an agent who
