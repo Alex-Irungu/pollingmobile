@@ -21,6 +21,8 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert, Linking } from 'react-native';
 
+import { withRelockSuppressed } from '../services/appStateGuard';
+
 /** Long-edge target. See module note on why this value. */
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.7;
@@ -91,47 +93,51 @@ function explainPermission(kind: 'camera' | 'library'): void {
  * normal action, not an error, and must not produce a scary dialog.
  */
 export async function captureFormPhoto(): Promise<PreparedPhoto | null> {
-  const permission = await ImagePicker.requestCameraPermissionsAsync();
-  if (!permission.granted) {
-    explainPermission('camera');
-    return null;
-  }
+  return withRelockSuppressed(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      explainPermission('camera');
+      return null;
+    }
 
-  const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ['images'],
-    // No cropping step. The whole form matters, including the header and the
-    // presiding officer's signature, and an agent under time pressure should
-    // not be deciding what to crop out of evidence.
-    allowsEditing: false,
-    quality: 1,
-    exif: false,
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      // No cropping step. The whole form matters, including the header and the
+      // presiding officer's signature, and an agent under time pressure should
+      // not be deciding what to crop out of evidence.
+      allowsEditing: false,
+      quality: 1,
+      exif: false,
+    });
+
+    if (result.canceled || !result.assets?.length) return null;
+
+    const asset = result.assets[0];
+    return compress(asset.uri, asset.width, asset.height);
   });
-
-  if (result.canceled || !result.assets?.length) return null;
-
-  const asset = result.assets[0];
-  return compress(asset.uri, asset.width, asset.height);
 }
 
 /** Attach a photo already taken, e.g. when the form was shot before opening the app. */
 export async function pickFormPhoto(): Promise<PreparedPhoto | null> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
-    explainPermission('library');
-    return null;
-  }
+  return withRelockSuppressed(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      explainPermission('library');
+      return null;
+    }
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    allowsEditing: false,
-    quality: 1,
-    exif: false,
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 1,
+      exif: false,
+    });
+
+    if (result.canceled || !result.assets?.length) return null;
+
+    const asset = result.assets[0];
+    return compress(asset.uri, asset.width, asset.height);
   });
-
-  if (result.canceled || !result.assets?.length) return null;
-
-  const asset = result.assets[0];
-  return compress(asset.uri, asset.width, asset.height);
 }
 
 export function formatBytes(bytes: number | null): string {

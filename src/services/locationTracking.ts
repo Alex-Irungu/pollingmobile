@@ -24,6 +24,7 @@ import * as TaskManager from 'expo-task-manager';
 import { PermissionsAndroid, Platform } from 'react-native';
 
 import { updateMyLocation } from '../api/endpoints';
+import { withRelockSuppressed } from './appStateGuard';
 
 /**
  * Android 13+ (API 33) requires a runtime permission before any notification
@@ -64,14 +65,20 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
  * the minimum the rest of this module needs to do anything at all.
  */
 export async function requestLocationPermissions(): Promise<boolean> {
-  const foreground = await Location.requestForegroundPermissionsAsync();
-  if (foreground.status !== 'granted') return false;
+  // The system permission dialog itself briefly takes focus away from the
+  // app, which otherwise looks identical to the agent switching away to
+  // another app and would wrongly trigger the biometric re-lock (see
+  // appStateGuard.ts).
+  return withRelockSuppressed(async () => {
+    const foreground = await Location.requestForegroundPermissionsAsync();
+    if (foreground.status !== 'granted') return false;
 
-  // Background is a separate, second prompt on Android 10+ and iOS. Requested
-  // right after foreground succeeds, while the agent is still in the flow of
-  // granting access, rather than asking again later.
-  await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
-  return true;
+    // Background is a separate, second prompt on Android 10+ and iOS. Requested
+    // right after foreground succeeds, while the agent is still in the flow of
+    // granting access, rather than asking again later.
+    await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
+    return true;
+  });
 }
 
 export async function hasLocationPermission(): Promise<boolean> {
@@ -105,7 +112,7 @@ export async function startLocationTracking(): Promise<void> {
   // whole feature is best-effort -- it must never be able to take the app
   // down with it.
   try {
-    await ensureNotificationPermission();
+    await withRelockSuppressed(ensureNotificationPermission);
 
     const alreadyRunning = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK).catch(
       () => false,

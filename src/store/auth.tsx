@@ -23,6 +23,7 @@ import React, {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { isRelockSuppressed } from '../services/appStateGuard';
 import { setSessionExpiredHandler } from '../api/client';
 import * as api from '../api/endpoints';
 import {
@@ -90,6 +91,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         (previous === 'background' || previous === 'inactive') && next === 'active';
       if (!cameToForeground) return;
       if (statusRef.current !== 'signedIn') return;
+
+      // The camera, photo library, and permission dialogs all briefly hand
+      // control to a different Activity, which looks identical to the agent
+      // switching away to another app. Re-locking on the way back from one of
+      // those would throw away whatever they were in the middle of doing.
+      if (isRelockSuppressed()) return;
 
       const biometricEnabled = await getBiometricEnabled();
       if (biometricEnabled) setStatus('locked');
