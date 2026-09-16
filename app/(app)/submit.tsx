@@ -83,7 +83,6 @@ export default function SubmitScreen() {
 
   const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
   const [votes, setVotes] = useState<Record<string, string>>({});
-  const [validVotes, setValidVotes] = useState('');
   const [rejectedVotes, setRejectedVotes] = useState('');
   const [notes, setNotes] = useState('');
   const [phase, setPhase] = useState<Phase>('form');
@@ -98,17 +97,15 @@ export default function SubmitScreen() {
   const validation = useResultValidation({
     candidates,
     votes,
-    validVotes,
     rejectedVotes,
     registeredVoters,
     hasPhoto: photo !== null,
   });
 
   const totalCast = useMemo(() => {
-    const valid = Number.parseInt(validVotes, 10);
     const rejected = Number.parseInt(rejectedVotes, 10);
-    return (Number.isFinite(valid) ? valid : 0) + (Number.isFinite(rejected) ? rejected : 0);
-  }, [validVotes, rejectedVotes]);
+    return validation.candidateTotal + (Number.isFinite(rejected) ? rejected : 0);
+  }, [validation.candidateTotal, rejectedVotes]);
 
   async function attachPhoto(source: 'camera' | 'library') {
     try {
@@ -135,7 +132,7 @@ export default function SubmitScreen() {
     // is the last chance to catch a mis-key.
     Alert.alert(
       'Send this result?',
-      `${station.display_name}\n\n${summary}\n\nValid: ${validVotes}\nRejected: ${rejectedVotes || '0'}\nTotal cast: ${totalCast}\n\nYou cannot edit this after sending.`,
+      `${station.display_name}\n\n${summary}\n\nValid: ${validation.candidateTotal}\nRejected: ${rejectedVotes || '0'}\nTotal cast: ${totalCast}\n\nYou cannot edit this after sending.`,
       [
         { text: 'Check again', style: 'cancel' },
         { text: 'Send', style: 'default', onPress: submit },
@@ -167,7 +164,7 @@ export default function SubmitScreen() {
         race: race.id,
         polling_station: station.id,
         total_registered_voters: registeredVoters ?? 0,
-        total_valid_votes: Number.parseInt(validVotes, 10) || 0,
+        total_valid_votes: validation.candidateTotal,
         total_rejected_votes: Number.parseInt(rejectedVotes, 10) || 0,
         total_votes_cast: totalCast,
         form_34a_photo: attachment.url,
@@ -257,7 +254,7 @@ export default function SubmitScreen() {
           </Text>
           <Card style={styles.successCard}>
             <DetailRow label="Stream" value={station.display_name} />
-            <DetailRow label="Valid votes" value={formatNumber(Number(validVotes))} mono />
+            <DetailRow label="Valid votes" value={formatNumber(validation.candidateTotal)} mono />
             <DetailRow label="Total cast" value={formatNumber(totalCast)} mono />
           </Card>
           <Button
@@ -410,14 +407,16 @@ export default function SubmitScreen() {
           <View style={styles.block}>
             <SectionLabel>Step 3 — Totals from the form</SectionLabel>
             <Card>
-              <VoteInput
-                label="Total valid votes cast"
-                sublabel="As printed on the form"
-                value={validVotes}
-                onChange={setValidVotes}
-                emphasis
-                editable={!sending}
-              />
+              <View style={styles.derivedRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.derivedLabel}>Total valid votes</Text>
+                  <Text style={styles.derivedHint}>sum of the candidates above</Text>
+                </View>
+                <Text style={styles.derivedValue}>
+                  {formatNumber(validation.candidateTotal)}
+                </Text>
+              </View>
+
               <VoteInput
                 label="Rejected ballots"
                 sublabel="Spoilt or rejected"

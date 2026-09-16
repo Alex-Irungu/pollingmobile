@@ -13,6 +13,12 @@
  * Errors block submission. Warnings do not: an unusual turnout is not proof of
  * anything, and an app that refused to send a real-but-surprising result would
  * be suppressing exactly the evidence the platform exists to capture.
+ *
+ * "Valid votes" is NOT typed by the agent. It is, by definition, the sum of
+ * every candidate's votes -- asking for it as a second, separately-typed
+ * figure only invited a transcription mismatch between two numbers that must
+ * always agree. The form only asks for what a human actually has to read off
+ * the paper per-candidate, plus rejected ballots.
  */
 
 import { useMemo } from 'react';
@@ -30,6 +36,7 @@ export interface ValidationResult {
   errors: ValidationIssue[];
   warnings: ValidationIssue[];
   canSubmit: boolean;
+  /** The sum of every candidate's votes -- this IS the valid votes figure. */
   candidateTotal: number;
   turnoutPercent: number | null;
 }
@@ -37,7 +44,6 @@ export interface ValidationResult {
 interface Input {
   candidates: BallotCandidate[];
   votes: Record<string, string>;
-  validVotes: string;
   rejectedVotes: string;
   registeredVoters: number | null;
   hasPhoto: boolean;
@@ -51,7 +57,6 @@ const toInt = (value: string): number => {
 export function useResultValidation({
   candidates,
   votes,
-  validVotes,
   rejectedVotes,
   registeredVoters,
   hasPhoto,
@@ -63,7 +68,9 @@ export function useResultValidation({
       (sum, candidate) => sum + toInt(votes[candidate.id] ?? ''),
       0,
     );
-    const valid = toInt(validVotes);
+    // Valid votes = candidate total, always. There is nothing to compare it
+    // against because it is not a second, independently-entered figure.
+    const valid = candidateTotal;
     const rejected = toInt(rejectedVotes);
     const cast = valid + rejected;
 
@@ -78,22 +85,6 @@ export function useResultValidation({
         severity: 'error',
         message:
           'Enter a figure for every candidate. Put 0 where a candidate got no votes -- leaving it blank is not the same thing.',
-      });
-    }
-
-    if (validVotes.length === 0) {
-      issues.push({
-        severity: 'error',
-        message: 'Enter the total valid votes cast, as printed on the form.',
-      });
-    } else if (allCandidatesEntered && candidateTotal !== valid) {
-      const difference = Math.abs(candidateTotal - valid);
-      issues.push({
-        severity: 'error',
-        message:
-          `Candidate votes add up to ${candidateTotal.toLocaleString('en-KE')}, but you entered ` +
-          `${valid.toLocaleString('en-KE')} valid votes -- a difference of ${difference.toLocaleString('en-KE')}. ` +
-          'Check the form again.',
       });
     }
 
@@ -113,9 +104,9 @@ export function useResultValidation({
       issues.push({
         severity: 'error',
         message:
-          `Valid votes (${valid.toLocaleString('en-KE')}) cannot be more than the ` +
+          `Candidate votes add up to ${valid.toLocaleString('en-KE')}, which cannot be more than the ` +
           `${registeredVoters.toLocaleString('en-KE')} voters registered at this stream. ` +
-          'Re-check the figure on the form.',
+          'Re-check the figures on the form.',
       });
     } else if (registeredVoters !== null && cast > registeredVoters) {
       // Physically impossible, so it is an error rather than a warning: more
@@ -173,5 +164,5 @@ export function useResultValidation({
       candidateTotal,
       turnoutPercent,
     };
-  }, [candidates, votes, validVotes, rejectedVotes, registeredVoters, hasPhoto]);
+  }, [candidates, votes, rejectedVotes, registeredVoters, hasPhoto]);
 }
