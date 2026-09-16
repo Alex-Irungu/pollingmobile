@@ -21,8 +21,24 @@
 
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { PermissionsAndroid, Platform } from 'react-native';
 
 import { updateMyLocation } from '../api/endpoints';
+
+/**
+ * Android 13+ (API 33) requires a runtime permission before any notification
+ * can be posted, including the one a location foreground service must show.
+ * Skipping this does not always fail quietly -- on some OEM builds, starting
+ * the foreground service without it throws past the JS promise boundary and
+ * takes the whole app down with it, which is why this must be requested (and
+ * awaited) before startLocationUpdatesAsync, not left to the OS to sort out.
+ */
+async function ensureNotificationPermission(): Promise<void> {
+  if (Platform.OS !== 'android' || Platform.Version < 33) return;
+  await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+  ).catch(() => undefined);
+}
 
 const LOCATION_TASK = 'sentinel-location-task';
 
@@ -82,23 +98,33 @@ export async function startLocationTracking(): Promise<void> {
     .then((pos) => updateMyLocation(pos.coords.latitude, pos.coords.longitude))
     .catch(() => undefined);
 
-  const alreadyRunning = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK).catch(
-    () => false,
-  );
-  if (alreadyRunning) return;
+  // Wrapped in try/catch rather than relying on a chained .catch(): the
+  // foreground service this starts posts a system notification, and on some
+  // Android builds a missing notification permission surfaces as a native
+  // exception that a chained promise .catch() does not reliably absorb. This
+  // whole feature is best-effort -- it must never be able to take the app
+  // down with it.
+  try {
+    await ensureNotificationPermission();
 
-  await Location.startLocationUpdatesAsync(LOCATION_TASK, {
-    accuracy: Location.Accuracy.Balanced,
-    timeInterval: BACKGROUND_INTERVAL_MS,
-    distanceInterval: BACKGROUND_DISTANCE_M,
-    showsBackgroundLocationIndicator: true,
-    foregroundService: {
-      notificationTitle: 'Sentinel is sharing your location',
-      notificationBody: 'The command centre can see your last known position while you are on duty.',
-    },
-  }).catch(() => {
+    const alreadyRunning = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK).catch(
+      () => false,
+    );
+    if (alreadyRunning) return;
+
+    await Location.startLocationUpdatesAsync(LOCATION_TASK, {
+      accuracy: Location.Accuracy.Balanced,
+      timeInterval: BACKGROUND_INTERVAL_MS,
+      distanceInterval: BACKGROUND_DISTANCE_M,
+      showsBackgroundLocationIndicator: true,
+      foregroundService: {
+        notificationTitle: 'Sentinel is sharing your location',
+        notificationBody: 'The command centre can see your last known position while you are on duty.',
+      },
+    });
+  } catch {
     started = false;
-  });
+  }
 }
 
 /** Stop reporting. Called on sign-out -- a signed-out device must not keep
