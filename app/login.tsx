@@ -230,6 +230,9 @@ export default function LoginScreen() {
             Sentinel is an internal campaign tool. It is not an IEBC system and is
             not endorsed by the IEBC.
           </Animated.Text>
+          <Animated.Text entering={FadeIn.delay(460)} style={styles.copyright}>
+            {`\u00A9 ${new Date().getFullYear()} Sentinel. All rights reserved.`}
+          </Animated.Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -332,5 +335,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xl,
     lineHeight: 17,
+  },
+  copyright: {
+    ...typography.caption,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
 });

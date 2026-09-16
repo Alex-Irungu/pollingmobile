@@ -19,7 +19,11 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Sentinel needs the camera so you can photograph the result declaration form at your polling station.",
         "NSPhotoLibraryUsageDescription": "Sentinel needs photo access so you can attach a picture you have already taken.",
-        "NSMicrophoneUsageDescription": "Sentinel needs the microphone so you can send voice notes to the command centre when typing is impractical."
+        "NSMicrophoneUsageDescription": "Sentinel needs the microphone so you can send voice notes to the command centre when typing is impractical.",
+        "NSFaceIDUsageDescription": "Sentinel uses Face ID to unlock the app quickly and securely.",
+        "NSLocationWhenInUseUsageDescription": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
@@ -38,7 +42,13 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "plugins": [
@@ -48,6 +58,7 @@
       "expo-audio",
       "expo-image",
       "expo-splash-screen",
+      "expo-local-authentication",
       [
         "expo-camera",
         {
@@ -58,6 +69,15 @@
         "expo-image-picker",
         {
           "photosPermission": "Sentinel needs photo access so you can attach a picture you have already taken."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
+          "locationWhenInUsePermission": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ]
     ],

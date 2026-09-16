@@ -48,6 +48,19 @@ export function fetchPosting() {
   return apiRequest<AgentPosting>('/agents/me/');
 }
 
+/**
+ * Field-safety ping, not a results endpoint: lets the command centre find an
+ * agent who has gone silent. Failures are swallowed by the caller
+ * (src/services/locationTracking.ts) rather than surfaced to the agent -- a
+ * missed ping on bad signal is not something they need to act on.
+ */
+export function updateMyLocation(latitude: number, longitude: number) {
+  return apiRequest<{ recorded_at: string }>('/agents/me/location/', {
+    method: 'POST',
+    body: { latitude, longitude },
+  });
+}
+
 // --------------------------------------------------------------------------- //
 // Uploads
 // --------------------------------------------------------------------------- //

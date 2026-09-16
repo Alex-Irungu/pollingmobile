@@ -11,6 +11,7 @@
  * screen every time they open it.
  */
 
+import * as LocalAuthentication from 'expo-local-authentication';
 import React, {
   createContext,
   useCallback,
@@ -24,18 +25,43 @@ import { setSessionExpiredHandler } from '../api/client';
 import * as api from '../api/endpoints';
 import {
   clearTokens,
+  getBiometricEnabled,
   getRefreshToken,
   setAccessToken,
   setRefreshToken,
   setRememberedEmail,
 } from '../api/tokens';
+import {
+  hasLocationPermission,
+  requestLocationPermissions,
+  startLocationTracking,
+  stopLocationTracking,
+} from '../services/locationTracking';
 
-type Status = 'restoring' | 'signedOut' | 'signedIn';
+// 'locked' sits between a restored session and full access: the refresh token
+// is valid, but the agent opted into a biometric gate (see Profile) and has
+// not yet passed it this launch. It is deliberately its own state rather than
+// folded into 'signedOut' -- the app must not throw away the session or route
+// through the password form just because the phone was put down for a minute.
+type Status = 'restoring' | 'signedOut' | 'locked' | 'signedIn';
 
 interface AuthValue {
   status: Status;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Prompts Face/Touch ID or a fingerprint to leave the 'locked' state. */
+  unlock: () => Promise<boolean>;
+}
+
+/**
+ * Silently starts location reporting if permission was already granted in an
+ * earlier session. Never prompts -- prompting belongs to the moments a
+ * permission is first requested (sign-in, or explicitly from Profile), not to
+ * every app launch.
+ */
+async function resumeLocationTrackingIfPermitted(): Promise<void> {
+  const granted = await hasLocationPermission();
+  if (granted) startLocationTracking();
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -44,6 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('restoring');
 
   const signOut = useCallback(async () => {
+    // A signed-out device must not keep reporting a position for an agent who
+    // is no longer using it.
+    await stopLocationTracking();
     const refresh = await getRefreshToken();
     if (refresh) {
       // Blacklist server-side so a copied token cannot be reused. Best effort:
@@ -80,7 +109,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // opens the app in a dead spot must still reach their station details
       // and their queued work. Any real request will refresh or fail on its
       // own terms.
-      setStatus('signedIn');
+      const biometricEnabled = await getBiometricEnabled();
+      if (cancelled) return;
+
+      if (biometricEnabled) {
+        // The session is valid but gated behind Face/Touch ID until unlock()
+        // succeeds this launch. Location tracking waits for that too --
+        // "signed in" should mean the agent is actually using the phone.
+        setStatus('locked');
+      } else {
+        setStatus('signedIn');
+        resumeLocationTrackingIfPermitted();
+      }
     })();
 
     return () => {
@@ -94,11 +134,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setRefreshToken(tokens.refresh);
     await setRememberedEmail(email.trim().toLowerCase());
     setStatus('signedIn');
+
+    // The closest thing this app has to a "sign up" moment for an
+    // invitation-only account: ask once, with the system prompt, rather than
+    // silently tracking without ever having asked.
+    requestLocationPermissions().then((granted) => {
+      if (granted) startLocationTracking();
+    });
+  }, []);
+
+  const unlock = useCallback(async () => {
+    const result = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Unlock Sentinel',
+      cancelLabel: 'Cancel',
+      // A device PIN/pattern is an acceptable fallback if biometrics are not
+      // enrolled or fail -- the phone's own lock screen already proves this is
+      // the agent, so refusing that fallback would only push them to disable
+      // the feature entirely.
+      disableDeviceFallback: false,
+    });
+    if (result.success) {
+      setStatus('signedIn');
+      resumeLocationTrackingIfPermitted();
+    }
+    return result.success;
   }, []);
 
   const value = useMemo<AuthValue>(
-    () => ({ status, signIn, signOut }),
-    [status, signIn, signOut],
+    () => ({ status, signIn, signOut, unlock }),
+    [status, signIn, signOut, unlock],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

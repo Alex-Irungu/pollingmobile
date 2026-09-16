@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiError } from '../src/api/client';
+import { LockScreen } from '../src/components/LockScreen';
 import { AuthProvider, useAuth } from '../src/store/auth';
 import { colors } from '../src/theme';
 
@@ -71,6 +72,13 @@ function NavigationGate() {
 
   if (status === 'restoring') {
     return <View style={styles.splash} />;
+  }
+
+  // A valid session waiting on Face/Touch ID. Rendered in place of the
+  // navigator entirely -- there is nothing behind it to protect if the app
+  // group were still reachable underneath.
+  if (status === 'locked') {
+    return <LockScreen />;
   }
 
   return (

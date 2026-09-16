@@ -72,3 +72,25 @@ export async function clearTokens(): Promise<void> {
   accessToken = null;
   await setRefreshToken(null);
 }
+
+const BIOMETRIC_ENABLED_KEY = 'sentinel.biometricEnabled';
+
+/**
+ * Whether the agent has opted into unlocking the app with Face/Touch ID or a
+ * fingerprint, in addition to the normal signed-in session. Off by default:
+ * enabling it is a deliberate choice made from the Profile screen, once the
+ * device has proven it can actually authenticate.
+ */
+export async function getBiometricEnabled(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(BIOMETRIC_ENABLED_KEY)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export async function setBiometricEnabled(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(BIOMETRIC_ENABLED_KEY, enabled ? 'true' : 'false').catch(
+    () => undefined,
+  );
+}
