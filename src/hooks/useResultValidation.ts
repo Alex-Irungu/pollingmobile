@@ -105,7 +105,19 @@ export function useResultValidation({
       });
     }
 
-    if (registeredVoters !== null && cast > registeredVoters) {
+    if (registeredVoters !== null && valid > registeredVoters) {
+      // Physically impossible on its own, regardless of rejected ballots, so
+      // this is checked separately from the combined cast check below and
+      // reported first -- it is the more specific, more common mistake
+      // (misread digit, or a figure from the wrong stream).
+      issues.push({
+        severity: 'error',
+        message:
+          `Valid votes (${valid.toLocaleString('en-KE')}) cannot be more than the ` +
+          `${registeredVoters.toLocaleString('en-KE')} voters registered at this stream. ` +
+          'Re-check the figure on the form.',
+      });
+    } else if (registeredVoters !== null && cast > registeredVoters) {
       // Physically impossible, so it is an error rather than a warning: more
       // ballots than registered voters means a transcription mistake, or
       // something that needs raising with the command centre directly.

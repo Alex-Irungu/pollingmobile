@@ -12,6 +12,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { Image, type ImageStyle } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
@@ -275,12 +276,17 @@ export default function SubmitScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+      <LinearGradient
+        colors={[colors.green, colors.greenLight]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top + spacing.md }]}
+      >
         <Text style={styles.headerTitle}>Submit Result</Text>
         <Text style={styles.headerSubtitle} numberOfLines={1}>
           {station.display_name}
         </Text>
-      </View>
+      </LinearGradient>
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -514,14 +520,13 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   header: {
-    backgroundColor: colors.surface,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
   },
-  headerTitle: { ...typography.title, color: colors.ink },
-  headerSubtitle: { ...typography.caption, color: colors.inkMuted, marginTop: 2 },
+  headerTitle: { ...typography.title, color: colors.white },
+  headerSubtitle: { ...typography.caption, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
   scroll: { padding: spacing.base, gap: spacing.lg },
   block: { gap: spacing.sm },
   guard: { padding: spacing.base },
