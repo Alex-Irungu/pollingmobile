@@ -9,16 +9,23 @@
  * to report a helpful number.
  */
 
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUnreadCount } from '../../src/hooks/useChat';
 import { colors, spacing, typography } from '../../src/theme';
+import { TabIcon } from '../../src/components/TabIcon';
 
 export default function AppLayout() {
   const unread = useUnreadCount();
+  const insets = useSafeAreaInsets();
+
+  // Android's 3-button and gesture nav bars both live in this inset. Without
+  // adding it to the tab bar's height/padding, the bar renders *behind* the
+  // system nav rather than above it, so the icons are unreachable.
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 0 : spacing.sm);
 
   return (
     <Tabs
@@ -26,7 +33,7 @@ export default function AppLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.green,
         tabBarInactiveTintColor: colors.inkFaint,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { height: 56 + bottomInset, paddingBottom: bottomInset }],
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
       }}
@@ -36,10 +43,12 @@ export default function AppLayout() {
         options={{
           title: 'My Station',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'location' : 'location-outline'}
+            <TabIcon
+              name="location-outline"
+              focusedName="location"
               size={size}
               color={color}
+              focused={focused}
             />
           ),
         }}
@@ -49,10 +58,12 @@ export default function AppLayout() {
         options={{
           title: 'Submit',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'document-text' : 'document-text-outline'}
+            <TabIcon
+              name="document-text-outline"
+              focusedName="document-text"
               size={size}
               color={color}
+              focused={focused}
             />
           ),
         }}
@@ -62,14 +73,14 @@ export default function AppLayout() {
         options={{
           title: 'Messages',
           tabBarIcon: ({ color, size, focused }) => (
-            <View>
-              <Ionicons
-                name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
-                size={size}
-                color={color}
-              />
-              {unread > 0 ? <View style={styles.badge} /> : null}
-            </View>
+            <TabIcon
+              name="chatbubbles-outline"
+              focusedName="chatbubbles"
+              size={size}
+              color={color}
+              focused={focused}
+              showBadge={unread > 0}
+            />
           ),
         }}
       />
@@ -82,23 +93,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopColor: colors.line,
     borderTopWidth: 1,
-    height: Platform.OS === 'ios' ? 88 : 64,
     paddingTop: spacing.sm,
-    paddingBottom: Platform.OS === 'ios' ? spacing.xl : spacing.sm,
   },
   tabItem: { paddingVertical: 2 },
   tabLabel: { ...typography.micro, fontSize: 11, letterSpacing: 0.2 },
-  // A dot, not a count. The exact number of unread messages does not change
-  // what the agent does, and a growing number is just noise.
-  badge: {
-    position: 'absolute',
-    top: -2,
-    right: -4,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.gold,
-    borderWidth: 1.5,
-    borderColor: colors.surface,
-  },
 });
