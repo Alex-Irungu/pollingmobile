@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // control to a different Activity, which looks identical to the agent
       // switching away to another app. Re-locking on the way back from one of
       // those would throw away whatever they were in the middle of doing.
-      if (isRelockSuppressed()) return;
+      if (await isRelockSuppressed()) return;
 
       const biometricEnabled = await getBiometricEnabled();
       if (biometricEnabled) setStatus('locked');
@@ -148,7 +148,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const biometricEnabled = await getBiometricEnabled();
       if (cancelled) return;
 
-      if (biometricEnabled) {
+      // This effect also runs on a cold start caused by Android killing the
+      // whole process to reclaim memory while the camera (or another system
+      // dialog) was open on top of it -- not just a genuine fresh launch. A
+      // re-lock suppressed for that reason (see appStateGuard.ts) must still
+      // be honoured here, since the entire JS runtime restarted and never
+      // gets to run the AppState listener's own check.
+      const suppressed = await isRelockSuppressed();
+      if (cancelled) return;
+
+      if (biometricEnabled && !suppressed) {
         // The session is valid but gated behind Face/Touch ID until unlock()
         // succeeds this launch. Location tracking waits for that too --
         // "signed in" should mean the agent is actually using the phone.

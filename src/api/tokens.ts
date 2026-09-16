@@ -94,3 +94,31 @@ export async function setBiometricEnabled(enabled: boolean): Promise<void> {
     () => undefined,
   );
 }
+
+const RELOCK_SUPPRESS_UNTIL_KEY = 'sentinel.relockSuppressUntil';
+
+/**
+ * A timestamp (ms epoch), persisted rather than kept in memory, marking how
+ * long the biometric re-lock should stay suppressed for.
+ *
+ * This has to survive a full process restart: opening the system camera can
+ * get the app's own process killed by Android to reclaim memory on a low-RAM
+ * field phone, and when it comes back the JS runtime starts completely fresh
+ * -- any in-memory flag would already be gone by the time it matters. Reading
+ * this from disk on that fresh start is what stops the agent being thrown
+ * back to a fingerprint prompt (and losing their place) after every photo.
+ */
+export async function getRelockSuppressUntil(): Promise<number> {
+  try {
+    const raw = await SecureStore.getItemAsync(RELOCK_SUPPRESS_UNTIL_KEY);
+    return raw ? Number(raw) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function setRelockSuppressUntil(timestamp: number): Promise<void> {
+  await SecureStore.setItemAsync(RELOCK_SUPPRESS_UNTIL_KEY, String(timestamp)).catch(
+    () => undefined,
+  );
+}

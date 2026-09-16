@@ -6,32 +6,42 @@
  *
  * Without this, opening the camera to photograph a declaration form would
  * hand control to a different Activity, and coming back would look
- * indistinguishable from switching away to another app: the AppState
- * listener would re-lock behind Face/Touch ID and reset navigation to the
- * home tab, throwing away whatever the agent was in the middle of doing.
+ * indistinguishable from switching away to another app: the app would
+ * re-lock behind Face/Touch ID and reset navigation to the home tab, throwing
+ * away whatever the agent was in the middle of doing.
  *
- * The suppression window is held open for a short grace period after the
- * triggering call resolves, because on Android the AppState "active" event
- * for the returning app can arrive slightly after the promise that returned
- * control does.
+ * This state is persisted (via SecureStore), not just held in memory, because
+ * on a low-RAM field phone Android can outright kill the app's process while
+ * the camera is in the foreground to reclaim memory. When the agent returns,
+ * the JS runtime starts completely fresh -- an in-memory flag would already
+ * be gone by the time `store/auth.tsx` decides whether to show the lock
+ * screen on that fresh start, which is exactly the case an in-memory-only
+ * suppression flag could not cover.
  */
 
-const GRACE_MS = 700;
+import { getRelockSuppressUntil, setRelockSuppressUntil } from '../api/tokens';
 
-let suppressUntil = 0;
+// Generous upper bound for how long the system UI might stay open -- an
+// agent can take as long as they like framing the photo. If the process is
+// killed entirely while this is in effect and never reaches the `finally`
+// below, this bound is what stops the bypass from lasting forever.
+const ACTIVE_MS = 10 * 60 * 1000;
 
-export function isRelockSuppressed(): boolean {
-  return Date.now() < suppressUntil;
+// Extra grace after the triggering call resolves, because on Android the
+// AppState "active" event for the returning app can arrive slightly after
+// the promise that returned control does.
+const GRACE_MS = 2000;
+
+export async function isRelockSuppressed(): Promise<boolean> {
+  const until = await getRelockSuppressUntil();
+  return Date.now() < until;
 }
 
 export async function withRelockSuppressed<T>(fn: () => Promise<T>): Promise<T> {
-  // Held at "forever" (a far-future timestamp) for the duration of the call,
-  // in case the underlying system UI takes longer than any fixed window --
-  // an agent can spend as long as they like framing the photo.
-  suppressUntil = Number.MAX_SAFE_INTEGER;
+  await setRelockSuppressUntil(Date.now() + ACTIVE_MS);
   try {
     return await fn();
   } finally {
-    suppressUntil = Date.now() + GRACE_MS;
+    await setRelockSuppressUntil(Date.now() + GRACE_MS);
   }
 }
