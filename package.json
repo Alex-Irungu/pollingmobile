@@ -19,6 +19,7 @@
     "date-fns": "^4.4.0",
     "expo": "~57.0.21",
     "expo-audio": "~57.0.4",
+    "expo-build-properties": "~57.0.20",
     "expo-camera": "~57.0.4",
     "expo-constants": "~57.0.17",
     "expo-dev-client": "~57.0.19",

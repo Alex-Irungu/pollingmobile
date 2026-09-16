@@ -23,7 +23,9 @@
         "NSFaceIDUsageDescription": "Sentinel uses Face ID to unlock the app quickly and securely.",
         "NSLocationWhenInUseUsageDescription": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -79,6 +81,15 @@
           "locationWhenInUsePermission": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": false,
+            "enableShrinkResourcesInReleaseBuilds": false
+          }
         }
       ]
     ],
