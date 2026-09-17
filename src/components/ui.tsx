@@ -187,11 +187,22 @@ export function Banner({
 // Loading / empty states
 // --------------------------------------------------------------------------- //
 
-export function LoadingState({ message = 'Loading' }: { message?: string }) {
+export function LoadingState({
+  message = 'Loading',
+  subMessage,
+}: {
+  message?: string;
+  subMessage?: string;
+}) {
   return (
     <View style={styles.centred}>
       <ActivityIndicator color={colors.green} size="large" />
       <Text style={styles.centredText}>{message}</Text>
+      {subMessage ? (
+        <Text style={[styles.centredText, { fontSize: 12, marginTop: 6, opacity: 0.6, maxWidth: 280, textAlign: 'center' }]}>
+          {subMessage}
+        </Text>
+      ) : null}
     </View>
   );
 }

@@ -13,7 +13,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -55,6 +55,18 @@ export default function MyStationScreen() {
   const { data, isLoading, error, refetch, isRefetching } = usePosting();
 
   const [signingOut, setSigningOut] = useState(false);
+  const [slowLoad, setSlowLoad] = useState(false);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isLoading && !data) {
+      slowTimer.current = setTimeout(() => setSlowLoad(true), 8000);
+    } else {
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+      setSlowLoad(false);
+    }
+    return () => { if (slowTimer.current) clearTimeout(slowTimer.current); };
+  }, [isLoading, data]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(
@@ -78,7 +90,12 @@ export default function MyStationScreen() {
   }, [signOut]);
 
   if (isLoading && !data) {
-    return <LoadingState message="Loading your station" />;
+    return (
+      <LoadingState
+        message="Loading your station"
+        subMessage={slowLoad ? 'Server is starting up — this happens after a quiet period. Usually ready in under a minute.' : undefined}
+      />
+    );
   }
 
   // A 403 here means the account is real but is not an active agent -- the
