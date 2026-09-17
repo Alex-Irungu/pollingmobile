@@ -36,7 +36,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, MIN_TOUCH, radius, spacing, typography } from '../theme';
 
-const PROGRESS_DURATION = 2600;
+const PROGRESS_DURATION = 1500;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BAR_H_PAD = spacing.xxl;
 const BAR_MAX = SCREEN_WIDTH - BAR_H_PAD * 2;
@@ -77,8 +77,8 @@ export function PostLoginSplash({ onComplete, showBiometricSetup, onEnableBiomet
 
   useEffect(() => {
     // ── Phase 1: loading ─────────────────────────────────────────────────
-    brandOpacity.value = withTiming(1, { duration: 500 });
-    progressOpacity.value = withDelay(350, withTiming(1, { duration: 400 }));
+    brandOpacity.value = withTiming(1, { duration: 320 });
+    progressOpacity.value = withDelay(200, withTiming(1, { duration: 280 }));
     barProgress.value = withTiming(1, {
       duration: PROGRESS_DURATION,
       easing: Easing.out(Easing.cubic),

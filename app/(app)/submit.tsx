@@ -36,6 +36,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
+import { API_BASE_URL } from '../../src/api/config';
 import { Button } from '../../src/components/Button';
 import { VoteInput } from '../../src/components/VoteInput';
 import {
@@ -150,12 +151,28 @@ export default function SubmitScreen() {
     setPhase('sending');
     setSubmitError(null);
 
+    // Wait for the server to be reachable before starting the upload.
+    // Render free-tier sleeps after inactivity and can take 30-60 s to wake;
+    // giving clear feedback here is better than a silent 120-second stall.
+    setProgress('Connecting to server…');
+    await (async () => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 55_000);
+      try {
+        await fetch(`${API_BASE_URL}/health/`, { signal: ctrl.signal });
+      } catch {
+        // If health check fails, continue anyway — upload has its own timeout.
+      } finally {
+        clearTimeout(t);
+      }
+    })();
+
     let lastError: unknown = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
         setProgress('Slow connection — retrying automatically…');
-        await new Promise<void>((r) => setTimeout(r, 4000));
+        await new Promise<void>((r) => setTimeout(r, 3000));
       }
 
       try {
@@ -188,13 +205,25 @@ export default function SubmitScreen() {
         });
 
         setPhase('done');
-        // Refresh the posting so My Station shows the new submission state.
         refetch();
         return;
       } catch (err) {
         lastError = err;
-        // Only retry on network/timeout errors. A server rejection (4xx/5xx)
-        // means the payload itself is wrong -- retrying would just fail again.
+
+        // "Already submitted" means the first attempt reached the server and
+        // saved correctly, but the mobile timed out before the 201 arrived.
+        // Treat this as a success: refresh posting data and show done screen.
+        if (
+          err instanceof ApiError &&
+          !err.isNetworkError &&
+          err.message.toLowerCase().includes('already')
+        ) {
+          setPhase('done');
+          refetch();
+          return;
+        }
+
+        // Only retry transient network/timeout errors.
         if (!(err instanceof ApiError) || !err.isNetworkError) break;
       }
     }
@@ -204,9 +233,9 @@ export default function SubmitScreen() {
     setSubmitError(
       lastError instanceof ApiError
         ? lastError.isNetworkError
-          ? 'No connection. Nothing was sent — your figures are still here. Move to where you have signal and try again.'
+          ? 'No connection — your figures are saved here. Move to an area with signal and try again.'
           : lastError.message
-        : 'Could not send the result. Please try again.',
+        : 'Could not send. Please try again.',
     );
   }
 
