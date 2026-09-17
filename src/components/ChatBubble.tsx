@@ -86,7 +86,7 @@ function AudioBubble({ url, durationMs }: { url: string; durationMs: number | nu
   );
 }
 
-export function ChatBubble({ message }: { message: ChatMessage }) {
+function ChatBubbleImpl({ message }: { message: ChatMessage }) {
   const [lightbox, setLightbox] = useState(false);
   const own = message.from_agent;
   // An optimistic bubble, not yet acknowledged by the server.
@@ -180,6 +180,19 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
     </Animated.View>
   );
 }
+
+export const ChatBubble = React.memo(ChatBubbleImpl, (prev, next) => {
+  // Message content is immutable once created -- only the id (for optimistic
+  // -> real swap) and read_at (delivery receipt) can change after the first
+  // render. useMessages() polls every 6s and returns brand-new objects even
+  // when nothing changed; without this comparator every bubble on screen
+  // would re-render (and AudioBubble would re-run its native player hooks)
+  // on every single poll tick.
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.read_at === next.message.read_at
+  );
+});
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', marginBottom: spacing.sm, paddingHorizontal: spacing.md },

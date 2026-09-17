@@ -79,7 +79,7 @@ export default function AppLayout() {
               size={size}
               color={color}
               focused={focused}
-              showBadge={unread > 0}
+              badgeCount={unread}
             />
           ),
         }}
@@ -97,6 +97,14 @@ export default function AppLayout() {
               focused={focused}
             />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          // Reachable via router.push('/(app)/history') from Profile, but not
+          // one of the tab bar's four daily-use destinations.
+          href: null,
         }}
       />
     </Tabs>

@@ -9,6 +9,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -20,9 +21,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import * as api from '../../src/api/endpoints';
 import { Button } from '../../src/components/Button';
 import { Card, DetailRow, LoadingState, SectionLabel } from '../../src/components/ui';
 import { clearPostingCache, usePosting } from '../../src/hooks/usePosting';
+import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
 import {
   hasLocationPermission,
   requestLocationPermissions,
@@ -48,6 +51,7 @@ const LEVEL_LABEL: Record<string, string> = {
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { signOut } = useAuth();
   const { data, isLoading } = usePosting();
 
@@ -58,6 +62,21 @@ export default function ProfileScreen() {
   useEffect(() => {
     hasLocationPermission().then(setLocationGranted);
   }, []);
+
+  // Warm the History screen's cache in the background, so tapping into it
+  // shows data immediately instead of a spinner. Cheap and harmless if the
+  // agent never opens it -- one small GET, deduplicated by React Query if a
+  // fetch is already in flight or the cache is still fresh.
+  useEffect(() => {
+    queryClient.prefetchQuery({
+      queryKey: submissionHistoryQueryKey,
+      queryFn: async () => {
+        const response = await api.fetchSubmissionHistory();
+        return response.results;
+      },
+      staleTime: 60_000,
+    });
+  }, [queryClient]);
 
   const handleEnableLocation = useCallback(async () => {
     setLocationBusy(true);

@@ -82,6 +82,7 @@ export function useSendMessage() {
         from_agent: true,
         sender_name: 'You',
         client_uuid: payload.client_uuid,
+        submission: payload.submission_id ?? null,
         read_at: null,
         created_at: new Date().toISOString(),
       };

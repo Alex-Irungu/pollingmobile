@@ -10,7 +10,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect } from 'react';
-import { ColorValue, StyleSheet, View } from 'react-native';
+import { ColorValue, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -26,10 +26,18 @@ interface TabIconProps {
   color: ColorValue;
   size: number;
   focused: boolean;
-  showBadge?: boolean;
+  /** Unread count. Renders as a red bubble with the number, capped at "9+". */
+  badgeCount?: number;
 }
 
-export function TabIcon({ name, focusedName, color, size, focused, showBadge }: TabIconProps) {
+export function TabIcon({
+  name,
+  focusedName,
+  color,
+  size,
+  focused,
+  badgeCount = 0,
+}: TabIconProps) {
   const scale = useSharedValue(focused ? 1 : 0.94);
   const pillOpacity = useSharedValue(focused ? 1 : 0);
 
@@ -46,13 +54,38 @@ export function TabIcon({ name, focusedName, color, size, focused, showBadge }: 
     opacity: pillOpacity.value,
   }));
 
+  const badgeScale = useSharedValue(badgeCount > 0 ? 1 : 0);
+
+  useEffect(() => {
+    badgeScale.value = withSpring(badgeCount > 0 ? 1 : 0, {
+      damping: 12,
+      stiffness: 260,
+    });
+  }, [badgeCount, badgeScale]);
+
+  const badgeStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: badgeScale.value }],
+  }));
+
+  const label = badgeCount > 9 ? '9+' : String(badgeCount);
+
   return (
     <View style={styles.wrap}>
       <Animated.View style={[styles.pill, pillStyle]} />
       <Animated.View style={iconStyle}>
         <Ionicons name={focused ? focusedName : name} size={size} color={color} />
       </Animated.View>
-      {showBadge ? <View style={styles.badge} /> : null}
+      {badgeCount > 0 ? (
+        <Animated.View
+          style={[
+            styles.badge,
+            badgeCount > 9 ? styles.badgeWide : null,
+            badgeStyle,
+          ]}
+        >
+          <Text style={styles.badgeText}>{label}</Text>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -73,13 +106,23 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: -1,
-    right: 6,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.gold,
+    top: -3,
+    right: 2,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 3,
+    backgroundColor: colors.rejected,
     borderWidth: 1.5,
     borderColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeWide: { minWidth: 20 },
+  badgeText: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 12,
   },
 });

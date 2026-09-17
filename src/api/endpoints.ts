@@ -17,6 +17,7 @@ import type {
   ConversationInfo,
   LoginResponse,
   MessageListResponse,
+  SubmissionHistoryResponse,
   SubmissionResponse,
   SubmitResultPayload,
 } from './types';
@@ -65,6 +66,11 @@ export function logout(refresh: string) {
 
 export function fetchPosting() {
   return apiRequest<AgentPosting>('/agents/me/');
+}
+
+/** The signed-in agent's own submission history, most recent first. */
+export function fetchSubmissionHistory() {
+  return apiRequest<SubmissionHistoryResponse>('/agents/me/submissions/');
 }
 
 /**
@@ -147,6 +153,7 @@ export function sendMessage(payload: {
   body?: string;
   attachment_id?: string;
   client_uuid: string;
+  submission_id?: string;
 }) {
   return apiRequest<ChatMessage>('/messages/', { method: 'POST', body: payload });
 }

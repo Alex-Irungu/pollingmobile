@@ -144,8 +144,32 @@ export interface ChatMessage {
   from_agent: boolean;
   sender_name: string;
   client_uuid: string | null;
+  /** Set when this message is a command-centre question (or reply) about a specific submission. */
+  submission: string | null;
   read_at: string | null;
   created_at: string;
+}
+
+export interface SubmissionHistoryItem {
+  id: string;
+  race_title: string;
+  polling_station_name: string;
+  iebc_code: string;
+  status: SubmissionStatus;
+  submitted_at: string;
+  total_registered_voters: number;
+  total_valid_votes: number;
+  total_rejected_votes: number;
+  total_votes_cast: number;
+  turnout: number;
+  photo_url: string;
+  rejection_reason: string;
+  questions: ChatMessage[];
+}
+
+export interface SubmissionHistoryResponse {
+  count: number;
+  results: SubmissionHistoryItem[];
 }
 
 export interface ConversationInfo {

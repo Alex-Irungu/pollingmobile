@@ -11,10 +11,11 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { Image, type ImageStyle } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -55,6 +56,7 @@ import {
   type PreparedPhoto,
 } from '../../src/hooks/usePhoto';
 import { useResultValidation } from '../../src/hooks/useResultValidation';
+import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
 import {
   colors,
   radius,
@@ -80,7 +82,22 @@ const previewImageStyle: ImageStyle = {
 export default function SubmitScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: posting, isLoading, refetch } = usePosting();
+
+  // Warm the History screen's cache as soon as this screen (its new primary
+  // entry point) mounts, so the History button feels instant rather than
+  // showing a spinner on first tap.
+  useEffect(() => {
+    queryClient.prefetchQuery({
+      queryKey: submissionHistoryQueryKey,
+      queryFn: async () => {
+        const response = await api.fetchSubmissionHistory();
+        return response.results;
+      },
+      staleTime: 60_000,
+    });
+  }, [queryClient]);
 
   const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
   const [votes, setVotes] = useState<Record<string, string>>({});
@@ -206,6 +223,7 @@ export default function SubmitScreen() {
 
         setPhase('done');
         refetch();
+        queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
         return;
       } catch (err) {
         lastError = err;
@@ -220,6 +238,7 @@ export default function SubmitScreen() {
         ) {
           setPhase('done');
           refetch();
+          queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
           return;
         }
 
@@ -232,7 +251,7 @@ export default function SubmitScreen() {
     setProgress('');
     setSubmitError(
       lastError instanceof ApiError
-        ? lastError.isNetworkError
+        ? lastError.isNetworkError 
           ? 'No connection — your figures are saved here. Move to an area with signal and try again.'
           : lastError.message
         : 'Could not send. Please try again.',
@@ -281,6 +300,16 @@ export default function SubmitScreen() {
               onPress: () => router.replace('/(app)'),
             }}
           />
+          <Pressable
+            onPress={() => router.push('/(app)/history')}
+            style={styles.historyLink}
+            accessibilityRole="button"
+            accessibilityLabel="View submission history"
+          >
+            <Ionicons name="time-outline" size={18} color={colors.green} />
+            <Text style={styles.historyLinkText}>View your submission history</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.green} />
+          </Pressable>
         </View>
       </View>
     );
@@ -310,6 +339,11 @@ export default function SubmitScreen() {
             onPress={() => router.replace('/(app)')}
             style={styles.successButton}
           />
+          <Button
+            label="View submission history"
+            variant="ghost"
+            onPress={() => router.push('/(app)/history')}
+          />
         </Animated.View>
       </View>
     );
@@ -327,10 +361,23 @@ export default function SubmitScreen() {
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: insets.top + spacing.md }]}
       >
-        <Text style={styles.headerTitle}>Submit Result</Text>
-        <Text style={styles.headerSubtitle} numberOfLines={1}>
-          {station.display_name}
-        </Text>
+        <View style={styles.headerRow}>
+          <View style={styles.flex}>
+            <Text style={styles.headerTitle}>Submit Result</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {station.display_name}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => router.push('/(app)/history')}
+            style={styles.historyButton}
+            accessibilityRole="button"
+            accessibilityLabel="View submission history"
+          >
+            <Ionicons name="time-outline" size={20} color={colors.white} />
+            <Text style={styles.historyButtonText}>History</Text>
+          </Pressable>
+        </View>
       </LinearGradient>
 
       <KeyboardAvoidingView
@@ -572,11 +619,35 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
   },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   headerTitle: { ...typography.title, color: colors.white },
   headerSubtitle: { ...typography.caption, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  historyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  historyButtonText: { ...typography.label, fontSize: 12, color: colors.white },
   scroll: { padding: spacing.base, gap: spacing.lg },
   block: { gap: spacing.sm },
-  guard: { padding: spacing.base },
+  guard: { padding: spacing.base, gap: spacing.md },
+  historyLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
+    ...shadow.sm,
+  },
+  historyLinkText: { ...typography.bodyStrong, color: colors.ink, flex: 1 },
   helpText: {
     ...typography.caption,
     color: colors.inkMuted,
