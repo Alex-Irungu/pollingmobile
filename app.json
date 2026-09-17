@@ -20,7 +20,7 @@
         "NSCameraUsageDescription": "Sentinel needs the camera so you can photograph the result declaration form at your polling station.",
         "NSPhotoLibraryUsageDescription": "Sentinel needs photo access so you can attach a picture you have already taken.",
         "NSMicrophoneUsageDescription": "Sentinel needs the microphone so you can send voice notes to the command centre when typing is impractical.",
-        "NSFaceIDUsageDescription": "Sentinel uses Face ID to unlock the app quickly and securely.",
+        "NSFaceIDUsageDescription": "Sentinel uses Face ID to sign you in quickly without typing your password.",
         "NSLocationWhenInUseUsageDescription": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Sentinel shares your location with the command centre while you are on duty, so they can reach you if you go silent or need help.",
         "UIBackgroundModes": [
@@ -58,10 +58,10 @@
       "expo-router",
       "expo-status-bar",
       "expo-secure-store",
+      "expo-local-authentication",
       "expo-audio",
       "expo-image",
       "expo-splash-screen",
-      "expo-local-authentication",
       [
         "expo-camera",
         {

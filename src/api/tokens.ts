@@ -73,14 +73,11 @@ export async function clearTokens(): Promise<void> {
   await setRefreshToken(null);
 }
 
-const BIOMETRIC_ENABLED_KEY = 'sentinel.biometricEnabled';
+// ── Biometric credential storage ─────────────────────────────────────────── //
 
-/**
- * Whether the agent has opted into unlocking the app with Face/Touch ID or a
- * fingerprint, in addition to the normal signed-in session. Off by default:
- * enabling it is a deliberate choice made from the Profile screen, once the
- * device has proven it can actually authenticate.
- */
+const BIOMETRIC_ENABLED_KEY = 'sentinel.biometricEnabled';
+const BIOMETRIC_REFRESH_KEY = 'sentinel.biometricRefresh';
+
 export async function getBiometricEnabled(): Promise<boolean> {
   try {
     return (await SecureStore.getItemAsync(BIOMETRIC_ENABLED_KEY)) === 'true';
@@ -90,35 +87,35 @@ export async function getBiometricEnabled(): Promise<boolean> {
 }
 
 export async function setBiometricEnabled(enabled: boolean): Promise<void> {
-  await SecureStore.setItemAsync(BIOMETRIC_ENABLED_KEY, enabled ? 'true' : 'false').catch(
-    () => undefined,
-  );
+  await SecureStore.setItemAsync(
+    BIOMETRIC_ENABLED_KEY,
+    enabled ? 'true' : 'false',
+  ).catch(() => undefined);
 }
 
-const RELOCK_SUPPRESS_UNTIL_KEY = 'sentinel.relockSuppressUntil';
-
-/**
- * A timestamp (ms epoch), persisted rather than kept in memory, marking how
- * long the biometric re-lock should stay suppressed for.
- *
- * This has to survive a full process restart: opening the system camera can
- * get the app's own process killed by Android to reclaim memory on a low-RAM
- * field phone, and when it comes back the JS runtime starts completely fresh
- * -- any in-memory flag would already be gone by the time it matters. Reading
- * this from disk on that fresh start is what stops the agent being thrown
- * back to a fingerprint prompt (and losing their place) after every photo.
- */
-export async function getRelockSuppressUntil(): Promise<number> {
+export async function getBiometricRefreshToken(): Promise<string | null> {
   try {
-    const raw = await SecureStore.getItemAsync(RELOCK_SUPPRESS_UNTIL_KEY);
-    return raw ? Number(raw) || 0 : 0;
+    return await SecureStore.getItemAsync(BIOMETRIC_REFRESH_KEY);
   } catch {
-    return 0;
+    return null;
   }
 }
 
-export async function setRelockSuppressUntil(timestamp: number): Promise<void> {
-  await SecureStore.setItemAsync(RELOCK_SUPPRESS_UNTIL_KEY, String(timestamp)).catch(
-    () => undefined,
-  );
+export async function setBiometricRefreshToken(token: string | null): Promise<void> {
+  if (token === null) {
+    await SecureStore.deleteItemAsync(BIOMETRIC_REFRESH_KEY).catch(() => undefined);
+    return;
+  }
+  await SecureStore.setItemAsync(BIOMETRIC_REFRESH_KEY, token, {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
 }
+
+/** Removes the biometric preference and its stored refresh credential. */
+export async function clearBiometricCredential(): Promise<void> {
+  await Promise.all([
+    SecureStore.deleteItemAsync(BIOMETRIC_ENABLED_KEY).catch(() => undefined),
+    SecureStore.deleteItemAsync(BIOMETRIC_REFRESH_KEY).catch(() => undefined),
+  ]);
+}
+

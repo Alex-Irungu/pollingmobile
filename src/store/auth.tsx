@@ -18,19 +18,20 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
 
-import { isRelockSuppressed } from '../services/appStateGuard';
-import { setSessionExpiredHandler } from '../api/client';
+import { refreshAccessTokenWith, setSessionExpiredHandler } from '../api/client';
 import * as api from '../api/endpoints';
 import {
+  clearBiometricCredential,
   clearTokens,
   getBiometricEnabled,
+  getBiometricRefreshToken,
   getRefreshToken,
   setAccessToken,
+  setBiometricEnabled,
+  setBiometricRefreshToken,
   setRefreshToken,
   setRememberedEmail,
 } from '../api/tokens';
@@ -41,19 +42,14 @@ import {
   stopLocationTracking,
 } from '../services/locationTracking';
 
-// 'locked' sits between a restored session and full access: the refresh token
-// is valid, but the agent opted into a biometric gate (see Profile) and has
-// not yet passed it this launch. It is deliberately its own state rather than
-// folded into 'signedOut' -- the app must not throw away the session or route
-// through the password form just because the phone was put down for a minute.
-type Status = 'restoring' | 'signedOut' | 'locked' | 'signedIn';
+type Status = 'restoring' | 'signedOut' | 'signedIn';
 
 interface AuthValue {
   status: Status;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  /** Prompts Face/Touch ID or a fingerprint to leave the 'locked' state. */
-  unlock: () => Promise<boolean>;
+  biometricSignIn: () => Promise<'success' | 'failed' | 'unavailable'>;
+  enableBiometric: () => Promise<boolean>;
 }
 
 /**
@@ -71,59 +67,30 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('restoring');
-  const statusRef = useRef(status);
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-
-  // Re-lock every time the app returns from the background, not just on cold
-  // start. Without this, enabling biometrics only ever gated the very first
-  // launch of the process -- switching away and back left the app wide open,
-  // which defeats the point of the toggle.
-  useEffect(() => {
-    let previousState: AppStateStatus = AppState.currentState;
-
-    const subscription = AppState.addEventListener('change', async (next) => {
-      const previous = previousState;
-      previousState = next;
-
-      const cameToForeground =
-        (previous === 'background' || previous === 'inactive') && next === 'active';
-      if (!cameToForeground) return;
-      if (statusRef.current !== 'signedIn') return;
-
-      // The camera, photo library, and permission dialogs all briefly hand
-      // control to a different Activity, which looks identical to the agent
-      // switching away to another app. Re-locking on the way back from one of
-      // those would throw away whatever they were in the middle of doing.
-      if (await isRelockSuppressed()) return;
-
-      const biometricEnabled = await getBiometricEnabled();
-      if (biometricEnabled) setStatus('locked');
-    });
-
-    return () => subscription.remove();
-  }, []);
-
   const signOut = useCallback(async () => {
-    // A signed-out device must not keep reporting a position for an agent who
-    // is no longer using it.
     await stopLocationTracking();
+    const biometricEnabled = await getBiometricEnabled();
     const refresh = await getRefreshToken();
-    if (refresh) {
-      // Blacklist server-side so a copied token cannot be reused. Best effort:
-      // if the agent is offline we still sign them out locally, because the
-      // alternative is refusing to sign out at all.
-      await api.logout(refresh).catch(() => undefined);
+
+    if (biometricEnabled && refresh) {
+      // Agent opted into biometric re-entry: preserve the refresh token as the
+      // biometric credential so they can sign back in without typing a password,
+      // and clear the main session locally without blacklisting the token.
+      await setBiometricRefreshToken(refresh);
+      setAccessToken(null);
+      await setRefreshToken(null);
+    } else {
+      if (refresh) await api.logout(refresh).catch(() => undefined);
+      await clearTokens();
+      await clearBiometricCredential();
     }
-    await clearTokens();
     setStatus('signedOut');
   }, []);
 
   useEffect(() => {
-    // The client calls this when a refresh definitively fails, e.g. the
-    // command centre deactivated the agent. Clears local state immediately.
-    setSessionExpiredHandler(() => {
+    setSessionExpiredHandler(async () => {
+      // Server-side revocation means the biometric credential is also dead.
+      await clearBiometricCredential();
       setStatus('signedOut');
     });
   }, []);
@@ -145,27 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // opens the app in a dead spot must still reach their station details
       // and their queued work. Any real request will refresh or fail on its
       // own terms.
-      const biometricEnabled = await getBiometricEnabled();
-      if (cancelled) return;
-
-      // This effect also runs on a cold start caused by Android killing the
-      // whole process to reclaim memory while the camera (or another system
-      // dialog) was open on top of it -- not just a genuine fresh launch. A
-      // re-lock suppressed for that reason (see appStateGuard.ts) must still
-      // be honoured here, since the entire JS runtime restarted and never
-      // gets to run the AppState listener's own check.
-      const suppressed = await isRelockSuppressed();
-      if (cancelled) return;
-
-      if (biometricEnabled && !suppressed) {
-        // The session is valid but gated behind Face/Touch ID until unlock()
-        // succeeds this launch. Location tracking waits for that too --
-        // "signed in" should mean the agent is actually using the phone.
-        setStatus('locked');
-      } else {
-        setStatus('signedIn');
-        resumeLocationTrackingIfPermitted();
-      }
+      setStatus('signedIn');
+      resumeLocationTrackingIfPermitted();
     })();
 
     return () => {
@@ -188,26 +136,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const unlock = useCallback(async () => {
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock Sentinel',
-      cancelLabel: 'Cancel',
-      // A device PIN/pattern is an acceptable fallback if biometrics are not
-      // enrolled or fail -- the phone's own lock screen already proves this is
-      // the agent, so refusing that fallback would only push them to disable
-      // the feature entirely.
-      disableDeviceFallback: false,
-    });
-    if (result.success) {
+  const biometricSignIn = useCallback(async (): Promise<'success' | 'failed' | 'unavailable'> => {
+    const bioRefresh = await getBiometricRefreshToken();
+    if (!bioRefresh) return 'unavailable';
+
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Sign in to Sentinel',
+        cancelLabel: 'Use password instead',
+        disableDeviceFallback: false,
+      });
+      if (!result.success) return 'failed';
+
+      const newAccess = await refreshAccessTokenWith(bioRefresh);
+      if (!newAccess) {
+        // Refresh token has expired or been revoked server-side.
+        await clearBiometricCredential();
+        return 'unavailable';
+      }
+
+      setAccessToken(newAccess);
       setStatus('signedIn');
-      resumeLocationTrackingIfPermitted();
+      requestLocationPermissions().then((granted) => {
+        if (granted) startLocationTracking();
+      });
+      return 'success';
+    } catch {
+      return 'failed';
     }
-    return result.success;
+  }, []);
+
+  const enableBiometric = useCallback(async (): Promise<boolean> => {
+    try {
+      const [hasHardware, isEnrolled] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+      ]);
+      if (!hasHardware || !isEnrolled) return false;
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Verify your identity to enable biometric login',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+      if (!result.success) return false;
+
+      const refresh = await getRefreshToken();
+      if (!refresh) return false;
+
+      await setBiometricRefreshToken(refresh);
+      await setBiometricEnabled(true);
+      return true;
+    } catch {
+      return false;
+    }
   }, []);
 
   const value = useMemo<AuthValue>(
-    () => ({ status, signIn, signOut, unlock }),
-    [status, signIn, signOut, unlock],
+    () => ({ status, signIn, signOut, biometricSignIn, enableBiometric }),
+    [status, signIn, signOut, biometricSignIn, enableBiometric],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

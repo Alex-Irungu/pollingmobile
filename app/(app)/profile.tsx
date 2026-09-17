@@ -9,15 +9,12 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native';
@@ -25,10 +22,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '../../src/components/Button';
 import { Card, DetailRow, LoadingState, SectionLabel } from '../../src/components/ui';
-import {
-  getBiometricEnabled,
-  setBiometricEnabled as persistBiometricEnabled,
-} from '../../src/api/tokens';
 import { clearPostingCache, usePosting } from '../../src/hooks/usePosting';
 import {
   hasLocationPermission,
@@ -59,48 +52,12 @@ export default function ProfileScreen() {
   const { data, isLoading } = usePosting();
 
   const [signingOut, setSigningOut] = useState(false);
-  const [biometricSupported, setBiometricSupported] = useState(false);
-  const [biometricEnabled, setBiometricEnabledState] = useState(false);
-  const [biometricBusy, setBiometricBusy] = useState(false);
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [locationBusy, setLocationBusy] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const [hardware, enrolled, enabled, locGranted] = await Promise.all([
-        LocalAuthentication.hasHardwareAsync(),
-        LocalAuthentication.isEnrolledAsync(),
-        getBiometricEnabled(),
-        hasLocationPermission(),
-      ]);
-      setBiometricSupported(hardware && enrolled);
-      setBiometricEnabledState(enabled);
-      setLocationGranted(locGranted);
-    })();
+    hasLocationPermission().then(setLocationGranted);
   }, []);
-
-  const handleToggleBiometric = useCallback(
-    async (next: boolean) => {
-      setBiometricBusy(true);
-      try {
-        if (next) {
-          // Prove the device can actually authenticate before committing to
-          // gating the app behind it -- otherwise a phone with a broken
-          // fingerprint sensor would lock its agent out entirely.
-          const result = await LocalAuthentication.authenticateAsync({
-            promptMessage: 'Confirm it is you',
-            disableDeviceFallback: false,
-          });
-          if (!result.success) return;
-        }
-        await persistBiometricEnabled(next);
-        setBiometricEnabledState(next);
-      } finally {
-        setBiometricBusy(false);
-      }
-    },
-    [],
-  );
 
   const handleEnableLocation = useCallback(async () => {
     setLocationBusy(true);
@@ -183,35 +140,6 @@ export default function ProfileScreen() {
             {data?.polling_station ? (
               <DetailRow label="Station" value={data.polling_station.display_name} />
             ) : null}
-          </Card>
-        </View>
-
-        <View style={styles.block}>
-          <SectionLabel>Security</SectionLabel>
-          <Card>
-            <View style={styles.row}>
-              <View style={styles.rowIcon}>
-                <Ionicons name="finger-print-outline" size={20} color={colors.green} />
-              </View>
-              <View style={styles.rowLabels}>
-                <Text style={styles.rowTitle}>Unlock with fingerprint / face</Text>
-                <Text style={styles.rowSubtitle}>
-                  {biometricSupported
-                    ? 'Require this each time you open the app.'
-                    : 'Not available on this device.'}
-                </Text>
-              </View>
-              {biometricBusy ? (
-                <ActivityIndicator color={colors.green} />
-              ) : (
-                <Switch
-                  value={biometricEnabled}
-                  onValueChange={handleToggleBiometric}
-                  disabled={!biometricSupported}
-                  trackColor={{ true: colors.green, false: colors.line }}
-                />
-              )}
-            </View>
           </Card>
         </View>
 

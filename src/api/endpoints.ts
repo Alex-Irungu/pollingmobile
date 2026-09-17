@@ -6,6 +6,7 @@
  * finds every affected call site.
  */
 
+import { API_BASE_URL } from './config';
 import { apiRequest } from './client';
 import type {
   AgentPosting,
@@ -17,6 +18,22 @@ import type {
   SubmissionResponse,
   SubmitResultPayload,
 } from './types';
+
+// --------------------------------------------------------------------------- //
+// Backend warm-up
+// --------------------------------------------------------------------------- //
+
+/**
+ * Fire-and-forget GET to /health/ — wakes a sleeping Render free-tier instance
+ * before the actual upload begins. Call it when the user starts to confirm;
+ * by the time they tap Send, the backend has already started responding.
+ *
+ * Never throws: a failed ping is not itself an error, the upload will
+ * still try with its own timeout.
+ */
+export function warmUp(): void {
+  fetch(`${API_BASE_URL}/health/`, { method: 'GET' }).catch(() => undefined);
+}
 
 // --------------------------------------------------------------------------- //
 // Authentication

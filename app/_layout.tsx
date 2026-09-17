@@ -3,16 +3,18 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiError } from '../src/api/client';
-import { LockScreen } from '../src/components/LockScreen';
+import { getBiometricEnabled } from '../src/api/tokens';
+import { PostLoginSplash } from '../src/components/PostLoginSplash';
 import { AuthProvider, useAuth } from '../src/store/auth';
 import { colors } from '../src/theme';
 
@@ -52,16 +54,41 @@ const queryClient = new QueryClient({
  * agent on every launch.
  */
 function NavigationGate() {
-  const { status } = useAuth();
+  const { status, enableBiometric } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const prevStatusRef = useRef<string>('restoring');
+  const [splashVisible, setSplashVisible] = useState(false);
+  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
 
   useEffect(() => {
-    if (status === 'restoring') return;
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
 
+    if (status === 'restoring') return;
     SplashScreen.hideAsync().catch(() => undefined);
 
     const inAppGroup = segments[0] === '(app)';
+
+    if (status === 'signedIn' && prev === 'signedOut') {
+      // Fresh login — navigate immediately so the Stack stays alive, then show
+      // the splash as an overlay on top of the already-mounted app group.
+      router.replace('/(app)');
+      (async () => {
+        try {
+          const [hasHardware, isEnrolled, alreadyEnabled] = await Promise.all([
+            LocalAuthentication.hasHardwareAsync(),
+            LocalAuthentication.isEnrolledAsync(),
+            getBiometricEnabled(),
+          ]);
+          setShowBiometricSetup(hasHardware && isEnrolled && !alreadyEnabled);
+        } catch {
+          setShowBiometricSetup(false);
+        }
+        setSplashVisible(true);
+      })();
+      return;
+    }
 
     if (status === 'signedIn' && !inAppGroup) {
       router.replace('/(app)');
@@ -74,24 +101,32 @@ function NavigationGate() {
     return <View style={styles.splash} />;
   }
 
-  // A valid session waiting on Face/Touch ID. Rendered in place of the
-  // navigator entirely -- there is nothing behind it to protect if the app
-  // group were still reachable underneath.
-  if (status === 'locked') {
-    return <LockScreen />;
-  }
-
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.canvas },
-        animation: 'fade',
-      }}
-    >
-      <Stack.Screen name="login" />
-      <Stack.Screen name="(app)" />
-    </Stack>
+    <View style={styles.root}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.canvas },
+          animation: 'fade',
+        }}
+      >
+        <Stack.Screen name="login" />
+        <Stack.Screen name="(app)" />
+      </Stack>
+
+      {/* Splash overlays the fully-mounted app so the navigator is never
+          torn down — removing it caused useRouter/useSegments to lose
+          context and crash on navigation. */}
+      {splashVisible && (
+        <View style={StyleSheet.absoluteFill}>
+          <PostLoginSplash
+            showBiometricSetup={showBiometricSetup}
+            onEnableBiometric={enableBiometric}
+            onComplete={() => setSplashVisible(false)}
+          />
+        </View>
+      )}
+    </View>
   );
 }
 

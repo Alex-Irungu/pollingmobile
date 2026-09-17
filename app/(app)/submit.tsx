@@ -123,6 +123,10 @@ export default function SubmitScreen() {
   function confirmSubmit() {
     if (!validation.canSubmit || !station || !race) return;
 
+    // Ping /health/ now so Render starts waking up while the agent reads the
+    // confirmation. By the time they tap Send, the cold-start is behind us.
+    api.warmUp();
+
     const summary = candidates
       .map((c) => `${c.full_name}: ${Number.parseInt(votes[c.id] ?? '0', 10) || 0}`)
       .join('\n');
@@ -146,49 +150,64 @@ export default function SubmitScreen() {
     setPhase('sending');
     setSubmitError(null);
 
-    try {
-      // Upload the photo first and separately. If the submission then fails,
-      // the image is already on the server and a retry does not re-send it --
-      // which on a weak connection is the difference between one transfer and
-      // several.
-      setProgress('Uploading the form photo...');
-      const attachment = await api.uploadFile({
-        uri: photo.uri,
-        name: `form-${station.iebc_code}.jpg`,
-        mimeType: 'image/jpeg',
-        purpose: 'RESULT_FORM',
-      });
+    let lastError: unknown = null;
 
-      setProgress('Sending the figures...');
-      await api.submitResult({
-        race: race.id,
-        polling_station: station.id,
-        total_registered_voters: registeredVoters ?? 0,
-        total_valid_votes: validation.candidateTotal,
-        total_rejected_votes: Number.parseInt(rejectedVotes, 10) || 0,
-        total_votes_cast: totalCast,
-        form_34a_photo: attachment.url,
-        notes: notes.trim(),
-        candidate_votes: candidates.map((candidate) => ({
-          candidate: candidate.id,
-          votes: Number.parseInt(votes[candidate.id] ?? '0', 10) || 0,
-        })),
-      });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        setProgress('Slow connection — retrying automatically…');
+        await new Promise<void>((r) => setTimeout(r, 4000));
+      }
 
-      setPhase('done');
-      // Refresh the posting so My Station shows the new submission state.
-      refetch();
-    } catch (error) {
-      setPhase('form');
-      setProgress('');
-      setSubmitError(
-        error instanceof ApiError
-          ? error.isNetworkError
-            ? 'No connection. Nothing was sent -- your figures are still here. Move to where you have signal and try again.'
-            : error.message
-          : 'Could not send the result. Please try again.',
-      );
+      try {
+        // Upload the photo first and separately. If the submission then fails,
+        // the image is already on the server and a retry does not re-send it --
+        // which on a weak connection is the difference between one transfer and
+        // several.
+        setProgress('Uploading the form photo…');
+        const attachment = await api.uploadFile({
+          uri: photo.uri,
+          name: `form-${station.iebc_code}.jpg`,
+          mimeType: 'image/jpeg',
+          purpose: 'RESULT_FORM',
+        });
+
+        setProgress('Sending the figures…');
+        await api.submitResult({
+          race: race.id,
+          polling_station: station.id,
+          total_registered_voters: registeredVoters ?? 0,
+          total_valid_votes: validation.candidateTotal,
+          total_rejected_votes: Number.parseInt(rejectedVotes, 10) || 0,
+          total_votes_cast: totalCast,
+          form_34a_photo: attachment.url,
+          notes: notes.trim(),
+          candidate_votes: candidates.map((candidate) => ({
+            candidate: candidate.id,
+            votes: Number.parseInt(votes[candidate.id] ?? '0', 10) || 0,
+          })),
+        });
+
+        setPhase('done');
+        // Refresh the posting so My Station shows the new submission state.
+        refetch();
+        return;
+      } catch (err) {
+        lastError = err;
+        // Only retry on network/timeout errors. A server rejection (4xx/5xx)
+        // means the payload itself is wrong -- retrying would just fail again.
+        if (!(err instanceof ApiError) || !err.isNetworkError) break;
+      }
     }
+
+    setPhase('form');
+    setProgress('');
+    setSubmitError(
+      lastError instanceof ApiError
+        ? lastError.isNetworkError
+          ? 'No connection. Nothing was sent — your figures are still here. Move to where you have signal and try again.'
+          : lastError.message
+        : 'Could not send the result. Please try again.',
+    );
   }
 
   if (isLoading && !posting) {

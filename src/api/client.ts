@@ -123,12 +123,16 @@ async function refreshAccessToken(): Promise<boolean> {
     const refresh = await getRefreshToken();
     if (!refresh) return false;
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(`${API_URL}/auth/refresh/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh }),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       if (!response.ok) {
         // The refresh token is genuinely dead (expired, or the agent was
@@ -143,9 +147,9 @@ async function refreshAccessToken(): Promise<boolean> {
       setAccessToken(data.access);
       return true;
     } catch {
-      // Offline. The token may well still be valid, so do NOT sign out --
-      // doing so would lock an agent out of their queued work for the rest of
-      // the night.
+      clearTimeout(timer);
+      // Offline or timed out. The token may well still be valid, so do NOT
+      // sign out -- doing so would lock an agent out of their queued work.
       return false;
     } finally {
       refreshInFlight = null;
@@ -250,4 +254,29 @@ export async function apiRequest<T>(
   }
 
   return parsed as T;
+}
+
+/**
+ * Exchange any refresh token for a new access token without touching the
+ * shared in-flight state. Used by biometric sign-in, which holds a separate
+ * credential from the main session refresh.
+ */
+export async function refreshAccessTokenWith(token: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(`${API_URL}/auth/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: token }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { access?: string };
+    return data.access ?? null;
+  } catch {
+    clearTimeout(timer);
+    return null;
+  }
 }

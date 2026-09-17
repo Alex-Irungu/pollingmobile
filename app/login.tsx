@@ -12,6 +12,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -29,7 +30,11 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '../src/api/client';
-import { getRememberedEmail } from '../src/api/tokens';
+import {
+  getBiometricEnabled,
+  getBiometricRefreshToken,
+  getRememberedEmail,
+} from '../src/api/tokens';
 import { Banner } from '../src/components/ui';
 import { useAuth } from '../src/store/auth';
 import {
@@ -44,22 +49,27 @@ import {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { signIn } = useAuth();
+  const { signIn, biometricSignIn } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [canBiometric, setCanBiometric] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
 
   const passwordRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    // Pre-fill the last email used on this device. Saves an agent typing it on
-    // a phone keyboard in the dark; it is not a credential.
     getRememberedEmail().then((remembered) => {
       if (remembered) setEmail(remembered);
     });
+    // Show the biometric button only when the agent has enabled it AND a
+    // saved credential exists (i.e. they haven't fully signed out).
+    Promise.all([getBiometricEnabled(), getBiometricRefreshToken()]).then(
+      ([enabled, token]) => setCanBiometric(enabled && !!token),
+    );
   }, []);
 
   const canSubmit = email.trim().length > 0 && password.length > 0 && !busy;
@@ -70,7 +80,7 @@ export default function LoginScreen() {
     setBusy(true);
     try {
       await signIn(email, password);
-      // No navigation here: the gate in _layout reacts to the status change.
+      // Navigation is handled by the gate in _layout.
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -81,6 +91,22 @@ export default function LoginScreen() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleBiometricSignIn() {
+    setBiometricBusy(true);
+    setError(null);
+    try {
+      const result = await biometricSignIn();
+      if (result === 'unavailable') {
+        setCanBiometric(false);
+        setError('Biometric login is no longer valid. Please sign in with your password.');
+      }
+      // 'failed' = user cancelled — no error shown, they can try again or use password.
+      // 'success' = _layout gate handles navigation.
+    } finally {
+      setBiometricBusy(false);
     }
   }
 
@@ -107,10 +133,14 @@ export default function LoginScreen() {
         >
           <Animated.View entering={FadeInDown.duration(420)} style={styles.header}>
             <View style={styles.logoMark}>
-              <Ionicons name="shield-checkmark" size={34} color={colors.gold} />
+              <Image
+                source={require('../assets/icon.png')}
+                style={styles.logoImage}
+                contentFit="contain"
+              />
             </View>
             <Text style={styles.wordmark}>Sentinel</Text>
-            <Text style={styles.tagline}>Field Agent</Text>
+            <Text style={styles.tagline}>FIELD AGENT</Text>
           </Animated.View>
 
           <Animated.View
@@ -217,6 +247,36 @@ export default function LoginScreen() {
               )}
             </Pressable>
 
+            {canBiometric && (
+              <Animated.View entering={FadeIn.duration(300)} style={styles.bioSection}>
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <Pressable
+                  onPress={handleBiometricSignIn}
+                  disabled={biometricBusy || busy}
+                  style={({ pressed }) => [
+                    styles.bioButton,
+                    (biometricBusy || busy) && styles.bioButtonDisabled,
+                    pressed && !(biometricBusy || busy) && styles.bioButtonPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sign in with biometric"
+                >
+                  {biometricBusy ? (
+                    <ActivityIndicator color={colors.green} size="small" />
+                  ) : (
+                    <Ionicons name="finger-print" size={22} color={colors.green} />
+                  )}
+                  <Text style={styles.bioText}>
+                    {biometricBusy ? 'Verifying…' : 'Sign in with fingerprint / face'}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            )}
+
             <View style={styles.help}>
               <Ionicons name="call-outline" size={15} color={colors.inkMuted} />
               <Text style={styles.helpText}>
@@ -249,15 +309,20 @@ const styles = StyleSheet.create({
   },
   header: { alignItems: 'center', marginBottom: spacing.xxl },
   logoMark: {
-    width: 68,
-    height: 68,
-    borderRadius: radius.xl,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
+    width: 88,
+    height: 88,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1.5,
     borderColor: 'rgba(189,144,53,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.base,
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: 72,
+    height: 72,
   },
   wordmark: {
     fontSize: 34,
@@ -269,7 +334,7 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.goldLight,
     marginTop: 2,
-    letterSpacing: 1.6,
+    letterSpacing: 3,
   },
   card: {
     backgroundColor: colors.surface,
@@ -319,6 +384,40 @@ const styles = StyleSheet.create({
   submitDisabled: { opacity: 0.4 },
   submitPressed: { backgroundColor: colors.greenDark },
   submitText: { ...typography.bodyStrong, color: colors.white, fontSize: 16 },
+  bioSection: {
+    marginTop: spacing.md,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginVertical: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.line,
+  },
+  dividerText: {
+    ...typography.caption,
+    color: colors.inkFaint,
+    fontSize: 12,
+  },
+  bioButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    minHeight: MIN_TOUCH + 4,
+    paddingHorizontal: spacing.md,
+  },
+  bioButtonDisabled: { opacity: 0.45 },
+  bioButtonPressed: { backgroundColor: colors.greenSurface, borderColor: colors.green },
+  bioText: { ...typography.bodyStrong, color: colors.green, fontSize: 15 },
   help: {
     flexDirection: 'row',
     gap: spacing.sm,

@@ -60,5 +60,5 @@ export const API_URL = `${API_BASE_URL}/api/v1`;
  * connection" even with a perfectly good signal. Uploads use their own,
  * longer budget.
  */
-export const REQUEST_TIMEOUT_MS = 45_000;
+export const REQUEST_TIMEOUT_MS = 90_000;
 export const UPLOAD_TIMEOUT_MS = 120_000;
