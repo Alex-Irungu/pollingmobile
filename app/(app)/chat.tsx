@@ -42,6 +42,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ApiError } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
 import type { ChatMessage } from '../../src/api/types';
 import { ChatBubble } from '../../src/components/ChatBubble';
@@ -163,8 +164,12 @@ export default function ChatScreen() {
         body: '',
         client_uuid: newUuid(),
       });
-    } catch {
-      setUploadError('Could not send the photo. Check your signal and try again.');
+    } catch (err) {
+      setUploadError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not send the photo. Check your signal and try again.',
+      );
     } finally {
       setAttaching(false);
     }
@@ -229,8 +234,12 @@ export default function ChatScreen() {
         attachment_id: attachment.id,
         client_uuid: newUuid(),
       });
-    } catch {
-      setUploadError('Could not send the voice note. Check your signal.');
+    } catch (err) {
+      setUploadError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not send the voice note. Check your signal.',
+      );
     }
   }
 

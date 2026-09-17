@@ -202,6 +202,11 @@ export async function apiRequest<T>(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+  const startedAt = Date.now();
+  console.log(
+    `[api] -> ${method} ${path} (timeout=${timeoutMs}ms, formData=${!!formData})`,
+  );
+
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
@@ -212,7 +217,14 @@ export async function apiRequest<T>(
     });
   } catch (error) {
     clearTimeout(timeout);
+    const elapsed = Date.now() - startedAt;
     const aborted = error instanceof Error && error.name === 'AbortError';
+    console.log(
+      `[api] xx ${method} ${path} FAILED after ${elapsed}ms — ` +
+        `name=${error instanceof Error ? error.name : typeof error} ` +
+        `message=${error instanceof Error ? error.message : String(error)} ` +
+        `aborted=${aborted}`,
+    );
     throw new ApiError(
       aborted
         ? 'The request timed out. Check your signal and try again.'
@@ -223,6 +235,9 @@ export async function apiRequest<T>(
     );
   }
   clearTimeout(timeout);
+  console.log(
+    `[api] <- ${method} ${path} ${response.status} after ${Date.now() - startedAt}ms`,
+  );
 
   if (response.status === 401 && !anonymous && !_isRetry) {
     const refreshed = await refreshAccessToken();

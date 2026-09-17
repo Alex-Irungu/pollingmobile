@@ -6,6 +6,8 @@
  * finds every affected call site.
  */
 
+import { File } from 'expo-file-system';
+
 import { API_BASE_URL } from './config';
 import { apiRequest } from './client';
 import type {
@@ -97,13 +99,13 @@ export function uploadFile(params: {
   durationMs?: number;
 }) {
   const form = new FormData();
-  // React Native's FormData accepts this {uri, name, type} shape; it is not
-  // the browser File API.
-  form.append('file', {
-    uri: params.uri,
-    name: params.name,
-    type: params.mimeType,
-  } as unknown as Blob);
+  // Expo SDK 57's global fetch/FormData is WinterCG-compliant and only
+  // accepts a string, a real Blob, or an expo-file-system File (which
+  // implements the Blob interface). The classic React Native
+  // {uri, name, type} object shape throws "Unsupported FormDataPart
+  // implementation" under this runtime.
+  const file = new File(params.uri);
+  form.append('file', file, params.name);
   form.append('purpose', params.purpose);
   if (params.durationMs !== undefined) {
     form.append('duration_ms', String(Math.round(params.durationMs)));
