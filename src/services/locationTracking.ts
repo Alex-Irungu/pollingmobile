@@ -21,7 +21,7 @@
 
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { PermissionsAndroid, Platform } from 'react-native';
+import { AppState, PermissionsAndroid, Platform } from 'react-native';
 
 import { updateMyLocation } from '../api/endpoints';
 import { withRelockSuppressed } from './appStateGuard';
@@ -39,6 +39,28 @@ async function ensureNotificationPermission(): Promise<void> {
   await PermissionsAndroid.request(
     PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
   ).catch(() => undefined);
+}
+
+/**
+ * Android 12+ refuses to start a foreground service (or kills the app trying)
+ * when the app is not actually in the foreground at that exact moment. This
+ * module is invoked right after login, unawaited, so it can lose the race
+ * against something else that briefly backgrounds the app in that same
+ * window -- the permission dialogs this module's own request triggers, or the
+ * agent jumping straight to the camera. That race is what took the app down
+ * rather than the try/catch below catching it. Waiting for 'active' here
+ * removes the race instead of trying to survive it.
+ */
+function waitForForeground(): Promise<void> {
+  if (AppState.currentState === 'active') return Promise.resolve();
+  return new Promise((resolve) => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        subscription.remove();
+        resolve();
+      }
+    });
+  });
 }
 
 const LOCATION_TASK = 'sentinel-location-task';
@@ -118,6 +140,11 @@ export async function startLocationTracking(): Promise<void> {
       () => false,
     );
     if (alreadyRunning) return;
+
+    // See waitForForeground's note above: never attempt to start the
+    // foreground service while something else (a permission dialog, the
+    // camera) has taken the app out of the foreground.
+    await waitForForeground();
 
     await Location.startLocationUpdatesAsync(LOCATION_TASK, {
       accuracy: Location.Accuracy.Balanced,
