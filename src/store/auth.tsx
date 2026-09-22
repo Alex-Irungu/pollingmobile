@@ -46,6 +46,12 @@ type Status = 'restoring' | 'signedOut' | 'signedIn';
 
 interface AuthValue {
   status: Status;
+  /**
+   * How the current 'signedIn' session was entered. NavigationGate uses this
+   * to decide whether it is safe to re-query the biometric hardware right
+   * after sign-in -- see biometricSignIn below for why that matters.
+   */
+  lastSignInMethod: 'password' | 'biometric' | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   biometricSignIn: () => Promise<'success' | 'failed' | 'unavailable'>;
@@ -67,6 +73,9 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('restoring');
+  const [lastSignInMethod, setLastSignInMethod] = useState<'password' | 'biometric' | null>(
+    null,
+  );
   const signOut = useCallback(async () => {
     await stopLocationTracking();
     const biometricEnabled = await getBiometricEnabled();
@@ -126,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAccessToken(tokens.access);
     await setRefreshToken(tokens.refresh);
     await setRememberedEmail(email.trim().toLowerCase());
+    setLastSignInMethod('password');
     setStatus('signedIn');
 
     // The closest thing this app has to a "sign up" moment for an
@@ -156,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setAccessToken(newAccess);
+      setLastSignInMethod('biometric');
       setStatus('signedIn');
       requestLocationPermissions().then((granted) => {
         if (granted) startLocationTracking();
@@ -193,8 +204,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<AuthValue>(
-    () => ({ status, signIn, signOut, biometricSignIn, enableBiometric }),
-    [status, signIn, signOut, biometricSignIn, enableBiometric],
+    () => ({ status, lastSignInMethod, signIn, signOut, biometricSignIn, enableBiometric }),
+    [status, lastSignInMethod, signIn, signOut, biometricSignIn, enableBiometric],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

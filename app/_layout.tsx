@@ -54,7 +54,7 @@ const queryClient = new QueryClient({
  * agent on every launch.
  */
 function NavigationGate() {
-  const { status, enableBiometric } = useAuth();
+  const { status, lastSignInMethod, enableBiometric } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const prevStatusRef = useRef<string>('restoring');
@@ -74,6 +74,19 @@ function NavigationGate() {
       // Fresh login — navigate immediately so the Stack stays alive, then show
       // the splash as an overlay on top of the already-mounted app group.
       router.replace('/(app)');
+
+      if (lastSignInMethod === 'biometric') {
+        // A fingerprint sign-in just proved hardware, enrollment, and
+        // enablement all at once, seconds ago. Re-querying
+        // hasHardwareAsync()/isEnrolledAsync() here would call straight back
+        // into the same native biometric module while its previous prompt is
+        // still tearing down -- a known Android crash (FragmentManager state
+        // loss). There is nothing to offer anyway: it is already enabled.
+        setShowBiometricSetup(false);
+        setSplashVisible(true);
+        return;
+      }
+
       (async () => {
         try {
           const [hasHardware, isEnrolled, alreadyEnabled] = await Promise.all([
