@@ -11,8 +11,7 @@
  * screen every time they open it.
  */
 
-import { useQueryClient } from '@tanstack/react-query';
-import * as LocalAuthentication from 'expo-local-authentication';
+import { QueryClient, useQueryClient } from '@tanstack/react-query';
 import React, {
   createContext,
   useCallback,
@@ -47,16 +46,16 @@ import {
   stopLocationTracking,
 } from '../services/locationTracking';
 import { restartApp } from '../services/restart';
+import { getBiometricCapability, promptBiometric } from '../services/biometrics';
+import { postingQueryKey } from '../hooks/usePosting';
 
 type Status = 'restoring' | 'signedOut' | 'signedIn';
 
 interface AuthValue {
   status: Status;
-  /**
-   * How the current 'signedIn' session was entered. NavigationGate uses this
-   * to decide whether it is safe to re-query the biometric hardware right
-   * after sign-in -- see biometricSignIn below for why that matters.
-   */
+  /** How the current session was entered. The biometric setup offer is only
+   * made after a password sign-in -- there is nothing to offer someone who
+   * just used their fingerprint. */
   lastSignInMethod: 'password' | 'biometric' | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -73,6 +72,19 @@ interface AuthValue {
 async function resumeLocationTrackingIfPermitted(): Promise<void> {
   const granted = await hasLocationPermission();
   if (granted) startLocationTracking();
+}
+
+/**
+ * Starts the home screen's fetch at the moment of sign-in rather than when
+ * that screen mounts. On a cheap phone, navigating and rendering the tab
+ * navigator costs a few hundred milliseconds; issuing the request first
+ * overlaps it with the network instead of queueing behind it. Fire and
+ * forget -- the screen's own useQuery picks up whatever this produced.
+ */
+function prefetchPosting(queryClient: QueryClient): void {
+  void queryClient
+    .prefetchQuery({ queryKey: postingQueryKey, queryFn: api.fetchPosting })
+    .catch(() => undefined);
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -174,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setRefreshToken(tokens.refresh);
     await setRememberedEmail(email.trim().toLowerCase());
     setLastSignInMethod('password');
+    prefetchPosting(queryClient);
     setStatus('signedIn');
 
     // The closest thing this app has to a "sign up" moment for an
@@ -182,19 +195,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     requestLocationPermissions().then((granted) => {
       if (granted) startLocationTracking();
     });
-  }, []);
+  }, [queryClient]);
 
   const biometricSignIn = useCallback(async (): Promise<'success' | 'failed' | 'unavailable'> => {
     const bioRefresh = await getBiometricRefreshToken();
     if (!bioRefresh) return 'unavailable';
 
     try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Sign in to Sentinel',
-        cancelLabel: 'Use password instead',
-        disableDeviceFallback: false,
-      });
-      if (!result.success) return 'failed';
+      const outcome = await promptBiometric('Sign in to Sentinel');
+      if (outcome === 'unavailable') return 'unavailable';
+      if (outcome !== 'success') return 'failed';
 
       const newAccess = await refreshAccessTokenWith(bioRefresh);
       if (!newAccess) {
@@ -211,6 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // mid-shift.
       await setRefreshToken(bioRefresh);
       setLastSignInMethod('biometric');
+      prefetchPosting(queryClient);
       setStatus('signedIn');
       requestLocationPermissions().then((granted) => {
         if (granted) startLocationTracking();
@@ -219,22 +230,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       return 'failed';
     }
-  }, []);
+  }, [queryClient]);
 
   const enableBiometric = useCallback(async (): Promise<boolean> => {
     try {
-      const [hasHardware, isEnrolled] = await Promise.all([
-        LocalAuthentication.hasHardwareAsync(),
-        LocalAuthentication.isEnrolledAsync(),
-      ]);
-      if (!hasHardware || !isEnrolled) return false;
+      const { usable } = await getBiometricCapability();
+      if (!usable) return false;
 
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Verify your identity to enable biometric login',
-        cancelLabel: 'Cancel',
-        disableDeviceFallback: false,
-      });
-      if (!result.success) return false;
+      const outcome = await promptBiometric(
+        'Verify your identity to enable biometric login',
+      );
+      if (outcome !== 'success') return false;
 
       const refresh = await getRefreshToken();
       if (!refresh) return false;

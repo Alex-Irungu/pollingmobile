@@ -111,6 +111,29 @@ export async function setBiometricRefreshToken(token: string | null): Promise<vo
   });
 }
 
+/**
+ * Whether the agent has already turned the biometric offer down.
+ *
+ * Asked once, then never again. An agent who said no at 5am on election day
+ * does not want the same sheet every time they sign in, and a prompt that
+ * reappears looks like the app forgot what they told it.
+ */
+const BIOMETRIC_DECLINED_KEY = 'sentinel.biometricDeclined';
+
+export async function getBiometricOfferDeclined(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(BIOMETRIC_DECLINED_KEY)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export async function setBiometricOfferDeclined(): Promise<void> {
+  await SecureStore.setItemAsync(BIOMETRIC_DECLINED_KEY, 'true').catch(
+    () => undefined,
+  );
+}
+
 /** Removes the biometric preference and its stored refresh credential. */
 export async function clearBiometricCredential(): Promise<void> {
   await Promise.all([

@@ -3,7 +3,6 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -13,9 +12,14 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiError } from '../src/api/client';
-import { getBiometricEnabled } from '../src/api/tokens';
+import {
+  getBiometricEnabled,
+  getBiometricOfferDeclined,
+  setBiometricOfferDeclined,
+} from '../src/api/tokens';
+import { BiometricSetupSheet } from '../src/components/BiometricSetupSheet';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
-import { PostLoginSplash } from '../src/components/PostLoginSplash';
+import { getBiometricCapability } from '../src/services/biometrics';
 import { AuthProvider, useAuth } from '../src/store/auth';
 import { colors } from '../src/theme';
 
@@ -59,8 +63,7 @@ function NavigationGate() {
   const segments = useSegments();
   const router = useRouter();
   const prevStatusRef = useRef<string>('restoring');
-  const [splashVisible, setSplashVisible] = useState(false);
-  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
+  const [offerBiometric, setOfferBiometric] = useState(false);
 
   useEffect(() => {
     const prev = prevStatusRef.current;
@@ -72,34 +75,24 @@ function NavigationGate() {
     const inAppGroup = segments[0] === '(app)';
 
     if (status === 'signedIn' && prev === 'signedOut') {
-      // Fresh login — navigate immediately so the Stack stays alive, then show
-      // the splash as an overlay on top of the already-mounted app group.
+      // Straight in. Nothing is allowed to stand between a successful sign-in
+      // and the agent's station -- the work they signed in to do is on the
+      // other side of this call.
       router.replace('/(app)');
 
-      if (lastSignInMethod === 'biometric') {
-        // A fingerprint sign-in just proved hardware, enrollment, and
-        // enablement all at once, seconds ago. Re-querying
-        // hasHardwareAsync()/isEnrolledAsync() here would call straight back
-        // into the same native biometric module while its previous prompt is
-        // still tearing down -- a known Android crash (FragmentManager state
-        // loss). There is nothing to offer anyway: it is already enabled.
-        setShowBiometricSetup(false);
-        setSplashVisible(true);
-        return;
-      }
+      // Then, and only for a password sign-in, consider offering fingerprint
+      // setup. Someone who just used their fingerprint has nothing to enable,
+      // and every condition below is read from storage or from the cached
+      // capability, so no native biometric call is made here.
+      if (lastSignInMethod !== 'password') return;
 
       (async () => {
-        try {
-          const [hasHardware, isEnrolled, alreadyEnabled] = await Promise.all([
-            LocalAuthentication.hasHardwareAsync(),
-            LocalAuthentication.isEnrolledAsync(),
-            getBiometricEnabled(),
-          ]);
-          setShowBiometricSetup(hasHardware && isEnrolled && !alreadyEnabled);
-        } catch {
-          setShowBiometricSetup(false);
-        }
-        setSplashVisible(true);
+        const [{ usable }, alreadyEnabled, declined] = await Promise.all([
+          getBiometricCapability(),
+          getBiometricEnabled(),
+          getBiometricOfferDeclined(),
+        ]);
+        setOfferBiometric(usable && !alreadyEnabled && !declined);
       })();
       return;
     }
@@ -109,7 +102,7 @@ function NavigationGate() {
     } else if (status === 'signedOut' && inAppGroup) {
       router.replace('/login');
     }
-  }, [status, segments, router]);
+  }, [status, segments, router, lastSignInMethod]);
 
   if (status === 'restoring') {
     return <View style={styles.splash} />;
@@ -128,17 +121,17 @@ function NavigationGate() {
         <Stack.Screen name="(app)" />
       </Stack>
 
-      {/* Splash overlays the fully-mounted app so the navigator is never
-          torn down — removing it caused useRouter/useSegments to lose
+      {/* Overlays the fully-mounted app so the navigator is never torn down —
+          removing it from the tree caused useRouter/useSegments to lose
           context and crash on navigation. */}
-      {splashVisible && (
-        <View style={StyleSheet.absoluteFill}>
-          <PostLoginSplash
-            showBiometricSetup={showBiometricSetup}
-            onEnableBiometric={enableBiometric}
-            onComplete={() => setSplashVisible(false)}
-          />
-        </View>
+      {offerBiometric && (
+        <BiometricSetupSheet
+          onEnable={enableBiometric}
+          onDismiss={(declined) => {
+            setOfferBiometric(false);
+            if (declined) void setBiometricOfferDeclined();
+          }}
+        />
       )}
     </View>
   );
