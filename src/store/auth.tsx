@@ -11,6 +11,7 @@
  * screen every time they open it.
  */
 
+import { useQueryClient } from '@tanstack/react-query';
 import * as LocalAuthentication from 'expo-local-authentication';
 import React, {
   createContext,
@@ -21,7 +22,11 @@ import React, {
   useState,
 } from 'react';
 
-import { refreshAccessTokenWith, setSessionExpiredHandler } from '../api/client';
+import {
+  invalidateSession,
+  refreshAccessTokenWith,
+  setSessionExpiredHandler,
+} from '../api/client';
 import * as api from '../api/endpoints';
 import {
   clearBiometricCredential,
@@ -72,11 +77,24 @@ async function resumeLocationTrackingIfPermitted(): Promise<void> {
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<Status>('restoring');
   const [lastSignInMethod, setLastSignInMethod] = useState<'password' | 'biometric' | null>(
     null,
   );
   const signOut = useCallback(async () => {
+    // Order matters. The session is retired *first*, so that anything the
+    // signed-in screens already have on the wire (a chat poll, a posting
+    // fetch) cannot come back with a 401 after the agent has signed in again
+    // and take the new session down with it.
+    invalidateSession();
+    setLastSignInMethod(null);
+
+    // In-flight queries are cancelled so a response cannot repopulate the
+    // cache a second after sign-out. The cache itself is emptied below, once
+    // the signed-in screens have unmounted.
+    await queryClient.cancelQueries().catch(() => undefined);
+
     await stopLocationTracking();
     const biometricEnabled = await getBiometricEnabled();
     const refresh = await getRefreshToken();
@@ -94,7 +112,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await clearBiometricCredential();
     }
     setStatus('signedOut');
-  }, []);
+
+    // After the status flip, so the clear lands on an unmounted tree rather
+    // than yanking data out from under screens that are still rendering it.
+    // The next agent on this device must not see the previous one's station
+    // or messages.
+    setTimeout(() => queryClient.clear(), 0);
+  }, [queryClient]);
 
   useEffect(() => {
     setSessionExpiredHandler(async () => {
@@ -132,6 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const tokens = await api.login(email, password);
+    // New session: anything still outstanding from the previous one is now
+    // stale and must not be able to refresh or expire these tokens.
+    invalidateSession();
     setAccessToken(tokens.access);
     await setRefreshToken(tokens.refresh);
     await setRememberedEmail(email.trim().toLowerCase());
@@ -165,7 +192,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return 'unavailable';
       }
 
+      invalidateSession();
       setAccessToken(newAccess);
+      // Restore the main session credential too. Without this the session
+      // holds only a 15-minute access token: the first 401 after that has no
+      // refresh token to spend and drops the agent back to the login screen
+      // mid-shift.
+      await setRefreshToken(bioRefresh);
       setLastSignInMethod('biometric');
       setStatus('signedIn');
       requestLocationPermissions().then((granted) => {

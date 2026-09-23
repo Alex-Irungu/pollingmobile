@@ -56,6 +56,27 @@ export function setSessionExpiredHandler(handler: SessionExpiredHandler): void {
   onSessionExpired = handler;
 }
 
+/**
+ * Which session a request belongs to.
+ *
+ * Signing out and straight back in happens in one process, and the requests
+ * the previous session had in flight do not stop when the tokens do: a chat
+ * poll fired a moment before sign-out lands a 401 a second or two later, by
+ * which time the *new* session is already signed in. Without a generation
+ * number that 401 is indistinguishable from the new session expiring, so it
+ * spends the fresh refresh token on a retry (rotating it out from under the
+ * new session) or calls onSessionExpired and throws the agent straight back
+ * to the login screen. Every request records the generation it started in and
+ * refuses to touch tokens, or to report an expiry, once that generation is
+ * stale.
+ */
+let sessionGeneration = 0;
+
+/** Marks every request from the current session as belonging to a dead one. */
+export function invalidateSession(): void {
+  sessionGeneration += 1;
+}
+
 /** Plain-language fallback when the body carries nothing an agent can act on. */
 function statusMessage(status: number): string {
   if (status === 401) return 'Your session has expired. Please sign in again.';
@@ -129,10 +150,12 @@ function extractFieldErrors(body: unknown): Record<string, string[]> | null {
  */
 let refreshInFlight: Promise<boolean> | null = null;
 
-async function refreshAccessToken(): Promise<boolean> {
+async function refreshAccessToken(generation: number): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
+    if (generation !== sessionGeneration) return false;
+
     const refresh = await getRefreshToken();
     if (!refresh) return false;
 
@@ -146,6 +169,10 @@ async function refreshAccessToken(): Promise<boolean> {
         signal: controller.signal,
       });
       clearTimeout(timer);
+
+      // A session change while this was on the wire means the answer is about
+      // the old session and says nothing about the new one.
+      if (generation !== sessionGeneration) return false;
 
       if (!response.ok) {
         // The refresh token is genuinely dead (expired, or the agent was
@@ -215,6 +242,7 @@ export async function apiRequest<T>(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+  const generation = sessionGeneration;
   const startedAt = Date.now();
   console.log(
     `[api] -> ${method} ${path} (timeout=${timeoutMs}ms, formData=${!!formData})`,
@@ -252,8 +280,13 @@ export async function apiRequest<T>(
     `[api] <- ${method} ${path} ${response.status} after ${Date.now() - startedAt}ms`,
   );
 
-  if (response.status === 401 && !anonymous && !_isRetry) {
-    const refreshed = await refreshAccessToken();
+  if (
+    response.status === 401 &&
+    !anonymous &&
+    !_isRetry &&
+    generation === sessionGeneration
+  ) {
+    const refreshed = await refreshAccessToken(generation);
     if (refreshed) {
       return apiRequest<T>(path, { ...options, _isRetry: true });
     }

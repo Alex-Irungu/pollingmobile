@@ -110,6 +110,28 @@ export async function hasLocationPermission(): Promise<boolean> {
 
 let started = false;
 
+/** Serialises starts, so two callers cannot race into one another. */
+let startInFlight: Promise<void> | null = null;
+
+/** When the foreground service was last torn down. See RESTART_COOLDOWN_MS. */
+let lastStoppedAt = 0;
+
+/**
+ * Android tears a location foreground service down asynchronously: the JS
+ * promise from stopLocationUpdatesAsync resolves well before the service and
+ * its notification are actually gone. Signing out and immediately back in
+ * asks for a *new* service inside that window, and starting one while the old
+ * instance is still being destroyed throws natively -- past the try/catch
+ * below, which is why the app closed rather than logging an error. Waiting a
+ * couple of seconds costs nothing (the first position comes from the
+ * foreground read either way) and removes the race.
+ */
+const RESTART_COOLDOWN_MS = 2500;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Start reporting location: one immediate foreground read, then a background
  * task for the rest of the session. Safe to call more than once -- signing in
@@ -117,7 +139,15 @@ let started = false;
  */
 export async function startLocationTracking(): Promise<void> {
   if (started) return;
+  if (startInFlight) return startInFlight;
 
+  startInFlight = start().finally(() => {
+    startInFlight = null;
+  });
+  return startInFlight;
+}
+
+async function start(): Promise<void> {
   const granted = await hasLocationPermission();
   if (!granted) return;
 
@@ -146,6 +176,17 @@ export async function startLocationTracking(): Promise<void> {
     // camera) has taken the app out of the foreground.
     await waitForForeground();
 
+    // See RESTART_COOLDOWN_MS: let any service from the session that just
+    // ended finish dying before asking for a new one.
+    const sinceStop = Date.now() - lastStoppedAt;
+    if (sinceStop < RESTART_COOLDOWN_MS) {
+      await delay(RESTART_COOLDOWN_MS - sinceStop);
+      await waitForForeground();
+      if (!started) return;
+      const raced = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK).catch(() => false);
+      if (raced) return;
+    }
+
     await Location.startLocationUpdatesAsync(LOCATION_TASK, {
       accuracy: Location.Accuracy.Balanced,
       timeInterval: BACKGROUND_INTERVAL_MS,
@@ -169,4 +210,5 @@ export async function stopLocationTracking(): Promise<void> {
   if (running) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
   }
+  lastStoppedAt = Date.now();
 }
