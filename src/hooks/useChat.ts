@@ -22,7 +22,20 @@ import type { ChatMessage } from '../api/types';
 export const messagesQueryKey = ['messages'] as const;
 export const conversationQueryKey = ['conversation'] as const;
 
+/**
+ * Open-conversation poll. Fast, because an agent waiting on an instruction is
+ * watching the screen.
+ */
 const POLL_INTERVAL_MS = 6000;
+
+/**
+ * Unread-badge poll. Deliberately much slower: this one runs on *every* screen
+ * for the whole shift, and a dot on a tab does not need six-second accuracy.
+ * At 6s it was the single busiest thing in the app -- roughly 600 requests an
+ * hour per agent, each taking 1.5-2s against the backend, which is both a
+ * battery drain and a source of jank while an agent is typing figures.
+ */
+const BADGE_POLL_INTERVAL_MS = 30_000;
 
 export function useMessages() {
   return useQuery({
@@ -43,17 +56,20 @@ export function useConversation() {
   return useQuery({
     queryKey: conversationQueryKey,
     queryFn: api.fetchConversation,
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: BADGE_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 }
 
-/** Unread dot for the tab bar. */
+/**
+ * Unread dot for the tab bar.
+ *
+ * Shares useConversation's query rather than declaring its own: same key, so
+ * react-query serves both from one request instead of two definitions that can
+ * drift apart.
+ */
 export function useUnreadCount(): number {
-  const { data } = useQuery({
-    queryKey: conversationQueryKey,
-    queryFn: api.fetchConversation,
-    refetchInterval: POLL_INTERVAL_MS,
-  });
+  const { data } = useConversation();
   return data?.unread ?? 0;
 }
 

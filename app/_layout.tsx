@@ -14,6 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ApiError } from '../src/api/client';
 import { getBiometricEnabled } from '../src/api/tokens';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { PostLoginSplash } from '../src/components/PostLoginSplash';
 import { AuthProvider, useAuth } from '../src/store/auth';
 import { colors } from '../src/theme';
@@ -145,16 +146,21 @@ function NavigationGate() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <StatusBar style="light" />
-            <NavigationGate />
-          </AuthProvider>
-        </QueryClientProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    // Outside every provider on purpose: a failure while building the query
+    // client, restoring the session or mounting the navigator must still land
+    // on the recovery screen rather than closing the app.
+    <ErrorBoundary>
+      <GestureHandlerRootView style={styles.root}>
+        <SafeAreaProvider>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <StatusBar style="light" />
+              <NavigationGate />
+            </AuthProvider>
+          </QueryClientProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
 

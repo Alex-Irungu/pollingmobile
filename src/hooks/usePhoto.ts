@@ -35,6 +35,25 @@ export interface PreparedPhoto {
   sizeBytes: number | null;
 }
 
+/**
+ * Compress, falling back to the original photo if manipulation fails.
+ *
+ * Resizing decodes the full-resolution bitmap into memory, which is the most
+ * memory-hungry thing this app does and the most likely to fail on a cheap
+ * handset that is already low on RAM. If it does fail, the right outcome is an
+ * uncompressed upload -- slow, but the evidence still gets there -- not a dead
+ * end for an agent who cannot re-photograph a form that has already been taken
+ * down.
+ */
+async function prepare(uri: string, width: number, height: number): Promise<PreparedPhoto> {
+  try {
+    return await compress(uri, width, height);
+  } catch (error) {
+    console.warn('[sentinel] photo compression failed, sending original', error);
+    return { uri, width, height, sizeBytes: null };
+  }
+}
+
 async function compress(uri: string, width: number, height: number): Promise<PreparedPhoto> {
   const longEdge = Math.max(width, height);
 
@@ -106,14 +125,18 @@ export async function captureFormPhoto(): Promise<PreparedPhoto | null> {
       // presiding officer's signature, and an agent under time pressure should
       // not be deciding what to crop out of evidence.
       allowsEditing: false,
-      quality: 1,
+      // Not 1. The captured file is re-encoded at JPEG_QUALITY moments later
+      // anyway, so a maximum-quality intermediate buys nothing and costs a
+      // multi-megabyte write and read back on the slowest storage in the
+      // phone. Visually lossless at the scale a form is read at.
+      quality: 0.8,
       exif: false,
     });
 
     if (result.canceled || !result.assets?.length) return null;
 
     const asset = result.assets[0];
-    return compress(asset.uri, asset.width, asset.height);
+    return prepare(asset.uri, asset.width, asset.height);
   });
 }
 
@@ -129,14 +152,14 @@ export async function pickFormPhoto(): Promise<PreparedPhoto | null> {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      quality: 1,
+      quality: 0.8,
       exif: false,
     });
 
     if (result.canceled || !result.assets?.length) return null;
 
     const asset = result.assets[0];
-    return compress(asset.uri, asset.width, asset.height);
+    return prepare(asset.uri, asset.width, asset.height);
   });
 }
 
