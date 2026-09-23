@@ -213,7 +213,10 @@ export default function SubmitScreen() {
           total_valid_votes: validation.candidateTotal,
           total_rejected_votes: Number.parseInt(rejectedVotes, 10) || 0,
           total_votes_cast: totalCast,
-          form_34a_photo: attachment.url,
+          // The storage key, not the signed url: this is persisted on the
+          // submission, and a signed url would stop resolving minutes later,
+          // leaving the result with no viewable evidence.
+          form_34a_photo: attachment.key,
           notes: notes.trim(),
           candidate_votes: candidates.map((candidate) => ({
             candidate: candidate.id,

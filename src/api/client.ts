@@ -56,6 +56,15 @@ export function setSessionExpiredHandler(handler: SessionExpiredHandler): void {
   onSessionExpired = handler;
 }
 
+/** Plain-language fallback when the body carries nothing an agent can act on. */
+function statusMessage(status: number): string {
+  if (status === 401) return 'Your session has expired. Please sign in again.';
+  if (status === 403) return 'You do not have permission to do that.';
+  if (status === 404) return 'Not found.';
+  if (status >= 500) return 'The server had a problem. Please try again.';
+  return 'Something went wrong.';
+}
+
 /**
  * Turn a DRF error body into one readable sentence.
  *
@@ -64,7 +73,15 @@ export function setSessionExpiredHandler(handler: SessionExpiredHandler): void {
  * of them, they are flattened once here.
  */
 function extractMessage(body: unknown, status: number): string {
-  if (typeof body === 'string' && body.trim()) return body;
+  if (typeof body === 'string' && body.trim()) {
+    // Not every error body is ours. An unhandled server exception, a Render
+    // proxy timeout or a captive-portal wifi page all return HTML, and showing
+    // "<!doctype html><title>Server Error (500)" to an agent is worse than
+    // useless -- it looks like the app is broken beyond saving. Fall through to
+    // the plain-language message for the status code instead.
+    if (body.trimStart().startsWith('<')) return statusMessage(status);
+    return body;
+  }
 
   if (body && typeof body === 'object') {
     const record = body as Record<string, unknown>;
@@ -90,11 +107,7 @@ function extractMessage(body: unknown, status: number): string {
     }
   }
 
-  if (status === 401) return 'Your session has expired. Please sign in again.';
-  if (status === 403) return 'You do not have permission to do that.';
-  if (status === 404) return 'Not found.';
-  if (status >= 500) return 'The server had a problem. Please try again.';
-  return 'Something went wrong.';
+  return statusMessage(status);
 }
 
 function extractFieldErrors(body: unknown): Record<string, string[]> | null {

@@ -89,7 +89,18 @@ export interface AgentPosting {
 
 export interface Attachment {
   id: string;
-  url: string;
+  /**
+   * Null when the file cannot currently be reached -- the backend signs each
+   * read against Supabase Storage, and rows survive whose underlying file does
+   * not (anything stored before the move off the ephemeral local disk). Render
+   * these as a missing-photo placeholder, never by passing null to an Image.
+   */
+  url: string | null;
+  /**
+   * Stable storage path. Persist this when referring to the file later (it is
+   * what `form_34a_photo` carries); `url` above is signed and expires.
+   */
+  key: string;
   kind: 'IMAGE' | 'AUDIO';
   purpose: 'RESULT_FORM' | 'CHAT';
   original_name: string;
@@ -162,7 +173,8 @@ export interface SubmissionHistoryItem {
   total_rejected_votes: number;
   total_votes_cast: number;
   turnout: number;
-  photo_url: string;
+  /** Null when the evidence photo cannot currently be reached. */
+  photo_url: string | null;
   rejection_reason: string;
   questions: ChatMessage[];
 }

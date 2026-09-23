@@ -114,7 +114,7 @@ function ChatBubbleImpl({ message }: { message: ChatMessage }) {
       >
         {!own ? <Text style={styles.senderName}>{message.sender_name}</Text> : null}
 
-        {message.kind === 'IMAGE' && message.attachment ? (
+        {message.kind === 'IMAGE' && message.attachment?.url ? (
           <Pressable onPress={() => setLightbox(true)} accessibilityRole="imagebutton">
             <Image
               source={{ uri: message.attachment.url }}
@@ -125,11 +125,28 @@ function ChatBubbleImpl({ message }: { message: ChatMessage }) {
           </Pressable>
         ) : null}
 
-        {message.kind === 'AUDIO' && message.attachment ? (
+        {/* Photo the server cannot currently produce a link for. Says so
+            plainly rather than showing a broken image frame, which reads as
+            the app being broken. */}
+        {message.kind === 'IMAGE' && !message.attachment?.url && !pending ? (
+          <View style={styles.unavailable}>
+            <Ionicons name="image-outline" size={18} color={colors.inkFaint} />
+            <Text style={styles.unavailableText}>Photo unavailable</Text>
+          </View>
+        ) : null}
+
+        {message.kind === 'AUDIO' && message.attachment?.url ? (
           <AudioBubble
             url={message.attachment.url}
             durationMs={message.attachment.duration_ms}
           />
+        ) : null}
+
+        {message.kind === 'AUDIO' && message.attachment && !message.attachment.url ? (
+          <View style={styles.unavailable}>
+            <Ionicons name="mic-off-outline" size={18} color={colors.inkFaint} />
+            <Text style={styles.unavailableText}>Voice note unavailable</Text>
+          </View>
         ) : null}
 
         {message.kind === 'AUDIO' && !message.attachment && pending ? (
@@ -165,7 +182,7 @@ function ChatBubbleImpl({ message }: { message: ChatMessage }) {
 
       <Modal visible={lightbox} transparent animationType="fade">
         <Pressable style={styles.lightbox} onPress={() => setLightbox(false)}>
-          {message.attachment ? (
+          {message.attachment?.url ? (
             <Image
               source={{ uri: message.attachment.url }}
               style={styles.lightboxImage}
@@ -233,6 +250,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     minWidth: 190,
   },
+  unavailable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  unavailableText: { ...typography.caption, color: colors.inkMuted },
   audioButton: {
     width: 38,
     height: 38,
