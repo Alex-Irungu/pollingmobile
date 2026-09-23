@@ -46,6 +46,7 @@ import {
   startLocationTracking,
   stopLocationTracking,
 } from '../services/locationTracking';
+import { restartApp } from '../services/restart';
 
 type Status = 'restoring' | 'signedOut' | 'signedIn';
 
@@ -113,11 +114,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setStatus('signedOut');
 
-    // After the status flip, so the clear lands on an unmounted tree rather
-    // than yanking data out from under screens that are still rendering it.
-    // The next agent on this device must not see the previous one's station
-    // or messages.
-    setTimeout(() => queryClient.clear(), 0);
+    // Credentials are gone, so the app is safe whatever happens next. Now hand
+    // the next sign-in a clean process: see services/restart.ts for why an
+    // in-process sign-out cannot be made reliable. The agent sees the native
+    // splash for a moment and lands on the login screen, exactly as if they
+    // had force-closed and reopened the app.
+    const restarted = await restartApp();
+
+    if (!restarted) {
+      // No updates module to reload through (Expo Go, dev client). Fall back
+      // to clearing in-process. After the status flip, so the clear lands on an
+      // unmounted tree rather than yanking data out from under screens still
+      // rendering it. The next agent on this device must not see the previous
+      // one's station or messages.
+      setTimeout(() => queryClient.clear(), 0);
+    }
   }, [queryClient]);
 
   useEffect(() => {

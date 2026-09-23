@@ -113,24 +113,26 @@ let started = false;
 /** Serialises starts, so two callers cannot race into one another. */
 let startInFlight: Promise<void> | null = null;
 
-/** When the foreground service was last torn down. See RESTART_COOLDOWN_MS. */
-let lastStoppedAt = 0;
-
 /**
- * Android tears a location foreground service down asynchronously: the JS
- * promise from stopLocationUpdatesAsync resolves well before the service and
- * its notification are actually gone. Signing out and immediately back in
- * asks for a *new* service inside that window, and starting one while the old
- * instance is still being destroyed throws natively -- past the try/catch
- * below, which is why the app closed rather than logging an error. Waiting a
- * couple of seconds costs nothing (the first position comes from the
- * foreground read either way) and removes the race.
+ * Whether the foreground service has already been stopped in this runtime.
+ *
+ * Android tears a location foreground service down asynchronously: the promise
+ * from stopLocationUpdatesAsync resolves well before the service, its
+ * notification and its task registration are actually gone. Starting a second
+ * service inside that window throws *natively* -- past the try/catch below,
+ * taking the whole app down rather than logging an error. That is the
+ * sign-out-then-straight-back-in crash.
+ *
+ * Rather than guess how long the teardown takes, the service is simply never
+ * started twice in one runtime. In the normal case this costs nothing: signing
+ * out restarts the runtime (see services/restart.ts), so the next sign-in gets
+ * a fresh one and a fresh service. This flag only bites where the restart is
+ * unavailable (Expo Go, dev client), and there the agent still gets the
+ * immediate foreground position read below -- only the background task waits
+ * until the next real app launch. A missing background ping is a degraded
+ * feature; a closed app in the middle of a shift is not.
  */
-const RESTART_COOLDOWN_MS = 2500;
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+let stoppedThisRuntime = false;
 
 /**
  * Start reporting location: one immediate foreground read, then a background
@@ -171,21 +173,18 @@ async function start(): Promise<void> {
     );
     if (alreadyRunning) return;
 
+    // See stoppedThisRuntime: never ask Android for a second foreground
+    // service in a runtime that has already torn one down.
+    if (stoppedThisRuntime) return;
+
     // See waitForForeground's note above: never attempt to start the
     // foreground service while something else (a permission dialog, the
     // camera) has taken the app out of the foreground.
     await waitForForeground();
 
-    // See RESTART_COOLDOWN_MS: let any service from the session that just
-    // ended finish dying before asking for a new one.
-    const sinceStop = Date.now() - lastStoppedAt;
-    if (sinceStop < RESTART_COOLDOWN_MS) {
-      await delay(RESTART_COOLDOWN_MS - sinceStop);
-      await waitForForeground();
-      if (!started) return;
-      const raced = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK).catch(() => false);
-      if (raced) return;
-    }
+    // Re-checked after the wait, which can last as long as the agent spends in
+    // another app: a sign-out may have happened in the meantime.
+    if (!started || stoppedThisRuntime) return;
 
     await Location.startLocationUpdatesAsync(LOCATION_TASK, {
       accuracy: Location.Accuracy.Balanced,
@@ -206,9 +205,9 @@ async function start(): Promise<void> {
  * reporting a position for an agent who is no longer using it. */
 export async function stopLocationTracking(): Promise<void> {
   started = false;
+  stoppedThisRuntime = true;
   const running = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK).catch(() => false);
   if (running) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
   }
-  lastStoppedAt = Date.now();
 }
