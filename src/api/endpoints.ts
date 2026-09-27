@@ -142,6 +142,17 @@ export function fetchLiveTally(raceId: string) {
 }
 
 /**
+ * Register (or, with an empty string, clear) this device's Expo push token,
+ * so the backend can notify this phone when the command centre writes.
+ */
+export function registerPushToken(token: string) {
+  return apiRequest<{ registered: boolean }>('/agents/me/push-token/', {
+    method: 'POST',
+    body: { token },
+  });
+}
+
+/**
  * Latest app build the campaign has shipped, so an outdated APK can say so.
  * The backend reads these from environment variables; ops bump them when a
  * new build is distributed.

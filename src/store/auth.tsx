@@ -45,6 +45,7 @@ import {
   startLocationTracking,
   stopLocationTracking,
 } from '../services/locationTracking';
+import { unregisterPushNotifications } from '../services/pushNotifications';
 import { restartApp } from '../services/restart';
 import { getBiometricCapability, promptBiometric } from '../services/biometrics';
 import { clearPostingCache, postingQueryKey } from '../hooks/usePosting';
@@ -123,6 +124,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAccessToken(null);
       await setRefreshToken(null);
     } else {
+      // Fire-and-forget, before the tokens go: a full sign-out releases the
+      // device, and the next holder must not get this agent's notifications.
+      // No await -- sign-out must not wait on a slow network for a courtesy.
+      void unregisterPushNotifications();
       if (refresh) await api.logout(refresh).catch(() => undefined);
       await clearTokens();
       await clearBiometricCredential();

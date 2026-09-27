@@ -9,7 +9,8 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Tabs } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { Tabs, useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +23,7 @@ import {
 import { postingQueryKey } from '../../src/hooks/usePosting';
 import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
 import { onOutboxEvent, startOutboxWatcher } from '../../src/services/messageOutbox';
+import { registerForPushNotifications } from '../../src/services/pushNotifications';
 import { onQueueSent, startQueueWatcher } from '../../src/services/submissionQueue';
 import { colors, spacing, typography } from '../../src/theme';
 import { TabIcon } from '../../src/components/TabIcon';
@@ -30,6 +32,7 @@ export default function AppLayout() {
   const unread = useUnreadCount();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   // The offline submission queue retries on its own for as long as the agent
   // is signed in. When a queued result finally lands, My Station and History
@@ -52,6 +55,18 @@ export default function AppLayout() {
       stopOutbox();
     };
   }, [queryClient]);
+
+  // Pushes: register this device once signed in, and make tapping a
+  // notification land on the conversation it announced.
+  useEffect(() => {
+    void registerForPushNotifications();
+    const sub = Notifications.addNotificationResponseReceivedListener(() => {
+      queryClient.invalidateQueries({ queryKey: messagesQueryKey });
+      queryClient.invalidateQueries({ queryKey: conversationQueryKey });
+      router.navigate('/(app)/chat');
+    });
+    return () => sub.remove();
+  }, [queryClient, router]);
 
   // Android's 3-button and gesture nav bars both live in this inset. Without
   // adding it to the tab bar's height/padding, the bar renders *behind* the
