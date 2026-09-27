@@ -99,19 +99,19 @@ export function PanicButton({ stationDisplayName, stationIebcCode }: Props) {
         accessibilityLabel="Emergency. Press and hold to alert the command centre with your location."
       >
         <View style={styles.iconWrap}>
-          <Ionicons name="warning" size={18} color={colors.rejected} />
+          <Ionicons name="warning" size={18} color={colors.white} />
         </View>
         <View style={styles.flex}>
           <Text style={styles.idleTitle}>Emergency</Text>
-          <Text style={styles.subText}>
+          <Text style={[styles.subText, styles.idleSubText]}>
             Press and hold to send your location to the command centre
           </Text>
         </View>
       </Pressable>
       {status === 'failed' ? (
         <Text style={styles.failedText}>
-          The alert could not be sent — no connection. If you can, call the
-          command centre directly. Hold the button to try again.
+          The alert could not be sent. Hold the button to try again — and if
+          you can, call the command centre directly.
         </Text>
       ) : null}
     </View>
@@ -130,12 +130,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   idleContainer: {
-    backgroundColor: colors.surface,
-    borderColor: colors.rejectedSurface,
+    backgroundColor: colors.rejected,
+    borderColor: colors.rejected,
   },
   idlePressed: {
-    backgroundColor: colors.rejectedSurface,
-    borderColor: colors.rejected,
+    backgroundColor: '#8F1E17',
+    borderColor: '#8F1E17',
   },
   sendingContainer: {
     backgroundColor: colors.rejectedSurface,
@@ -149,11 +149,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.pill,
-    backgroundColor: colors.rejectedSurface,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  idleTitle: { ...typography.bodyStrong, color: colors.rejected },
+  idleTitle: { ...typography.bodyStrong, color: colors.white },
+  idleSubText: { color: 'rgba(255,255,255,0.85)' },
   sendingTitle: { ...typography.bodyStrong, color: colors.rejected },
   sentTitle: { ...typography.bodyStrong, color: colors.verified },
   subText: {

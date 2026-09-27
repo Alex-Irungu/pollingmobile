@@ -43,9 +43,15 @@ function setStatus(next: EmergencyStatus): void {
 }
 
 function newUuid(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random()
-    .toString(36)
-    .slice(2)}`;
+  // RFC4122 v4 -- the server validates client_uuid as a real UUID and
+  // rejects anything else with a 400. Same generator as chat.tsx.
+  const globalCrypto = (globalThis as { crypto?: Crypto }).crypto;
+  if (globalCrypto?.randomUUID) return globalCrypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const rand = (Math.random() * 16) | 0;
+    const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 /**

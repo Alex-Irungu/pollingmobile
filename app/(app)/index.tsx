@@ -37,6 +37,8 @@ import {
   StatusPill,
   formatNumber,
 } from '../../src/components/ui';
+import { DayChecklist } from '../../src/components/DayChecklist';
+import { LiveTallyCard } from '../../src/components/LiveTallyCard';
 import { PanicButton } from '../../src/components/PanicButton';
 import { useLiveTally } from '../../src/hooks/useLiveTally';
 import { usePosting } from '../../src/hooks/usePosting';
@@ -58,7 +60,7 @@ export default function MyStationScreen() {
   const { signOut } = useAuth();
   const { data, isLoading, error, refetch, isRefetching } = usePosting();
   const queue = useSubmissionQueue();
-  const { data: tally } = useLiveTally(data?.race?.id);
+  const { data: tally, refetch: refetchTally } = useLiveTally(data?.race?.id);
 
   const [signingOut, setSigningOut] = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
@@ -146,7 +148,11 @@ export default function MyStationScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => {
+              refetch();
+              // The tally is the number people pull down *for* on the night.
+              refetchTally();
+            }}
             tintColor={colors.green}
             colors={[colors.green]}
           />
@@ -224,6 +230,13 @@ export default function MyStationScreen() {
               message="You are registered, but the command centre has not posted you to a polling stream. You cannot submit results until they do."
             />
           </View>
+        ) : null}
+
+        {station && race ? (
+          <DayChecklist
+            electionDate={race.election_date}
+            resultIn={!!submission || queue.kind === 'pending'}
+          />
         ) : null}
 
         {queue.kind === 'pending' ? (
@@ -347,72 +360,7 @@ export default function MyStationScreen() {
         ) : null}
 
         {tally && tally.candidates.length ? (
-          <View style={styles.block}>
-            <View style={styles.tallyHeaderRow}>
-              <SectionLabel>Live tally — {tally.race.title}</SectionLabel>
-            </View>
-            <Card>
-              <View style={styles.tallyMetaRow}>
-                <View style={styles.liveDot} />
-                <Text style={styles.tallyMeta}>
-                  {formatNumber(tally.summary.stations_reporting)} of{' '}
-                  {formatNumber(tally.summary.total_stations)} stations reporting
-                  {' · '}updates automatically
-                </Text>
-              </View>
-              {tally.candidates.map((candidate, index) => {
-                const share = Math.max(0, Math.min(100, candidate.percentage));
-                return (
-                  <View
-                    key={candidate.id}
-                    style={[
-                      styles.tallyRow,
-                      index < tally.candidates.length - 1 && styles.candidateDivider,
-                    ]}
-                  >
-                    <View style={styles.tallyNameRow}>
-                      <Text
-                        style={[
-                          styles.candidateName,
-                          candidate.is_my_candidate && styles.myCandidateName,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {candidate.full_name}
-                        {candidate.is_my_candidate ? '  ★' : ''}
-                      </Text>
-                      <Text style={styles.tallyVotes}>
-                        {formatNumber(candidate.votes)}
-                      </Text>
-                    </View>
-                    <View style={styles.tallyBarTrack}>
-                      <View
-                        style={[
-                          styles.tallyBarFill,
-                          { width: `${share}%` },
-                          candidate.is_my_candidate
-                            ? styles.tallyBarMine
-                            : styles.tallyBarOther,
-                        ]}
-                      />
-                    </View>
-                    <View style={styles.tallyNameRow}>
-                      <Text style={styles.candidateParty}>
-                        {candidate.party || 'INDEPENDENT'}
-                      </Text>
-                      <Text style={styles.tallyPercent}>
-                        {share.toFixed(1)}%
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-              <Text style={styles.tallyFootnote}>
-                Campaign's own tally from agent reports — not official IEBC
-                results.
-              </Text>
-            </Card>
-          </View>
+          <LiveTallyCard tally={tally} />
         ) : data?.candidates.length ? (
           <View style={styles.block}>
             <SectionLabel>Ballot ({data.candidates.length} candidates)</SectionLabel>
@@ -582,45 +530,6 @@ const styles = StyleSheet.create({
   },
   queuedTitle: { ...typography.heading, color: colors.pending },
   queuedButton: { marginTop: spacing.md },
-  tallyHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  tallyMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.verified,
-  },
-  tallyMeta: { ...typography.caption, fontSize: 12, color: colors.inkMuted, flex: 1 },
-  tallyRow: { paddingVertical: spacing.md, gap: 6 },
-  tallyNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  myCandidateName: { color: colors.green },
-  tallyVotes: { ...typography.numeric, fontSize: 16, color: colors.ink },
-  tallyPercent: { ...typography.caption, fontSize: 12, color: colors.inkMuted },
-  tallyBarTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceAlt,
-    overflow: 'hidden',
-  },
-  tallyBarFill: { height: '100%', borderRadius: 4 },
-  tallyBarMine: { backgroundColor: colors.green },
-  tallyBarOther: { backgroundColor: colors.gold },
-  tallyFootnote: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.inkFaint,
-    marginTop: spacing.sm,
-  },
   footer: {
     ...typography.caption,
     fontSize: 12,
