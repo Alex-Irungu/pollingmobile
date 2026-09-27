@@ -23,6 +23,7 @@ import {
   clearTokens,
   getAccessToken,
   getRefreshToken,
+  persistRotatedRefreshToken,
   setAccessToken,
 } from './tokens';
 
@@ -182,9 +183,12 @@ async function refreshAccessToken(generation: number): Promise<boolean> {
         return false;
       }
 
-      const data = (await response.json()) as { access?: string };
+      const data = (await response.json()) as { access?: string; refresh?: string };
       if (!data.access) return false;
       setAccessToken(data.access);
+      // The server rotates refresh tokens and has just blacklisted the one we
+      // sent. Keep the replacement or the next refresh is the last.
+      if (data.refresh) await persistRotatedRefreshToken(data.refresh);
       return true;
     } catch {
       clearTimeout(timer);
@@ -317,12 +321,19 @@ export async function apiRequest<T>(
   return parsed as T;
 }
 
+export interface RefreshedTokens {
+  access: string;
+  /** The rotated refresh token. The one presented is now blacklisted, so the
+   * caller must store this in its place. */
+  refresh: string;
+}
+
 /**
- * Exchange any refresh token for a new access token without touching the
- * shared in-flight state. Used by biometric sign-in, which holds a separate
+ * Exchange any refresh token for a new pair without touching the shared
+ * in-flight state. Used by biometric sign-in, which holds a separate
  * credential from the main session refresh.
  */
-export async function refreshAccessTokenWith(token: string): Promise<string | null> {
+export async function refreshAccessTokenWith(token: string): Promise<RefreshedTokens | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -334,8 +345,11 @@ export async function refreshAccessTokenWith(token: string): Promise<string | nu
     });
     clearTimeout(timer);
     if (!resp.ok) return null;
-    const data = (await resp.json()) as { access?: string };
-    return data.access ?? null;
+    const data = (await resp.json()) as { access?: string; refresh?: string };
+    if (!data.access) return null;
+    // A server without rotation would echo nothing; the presented token is
+    // then still the live one.
+    return { access: data.access, refresh: data.refresh ?? token };
   } catch {
     clearTimeout(timer);
     return null;

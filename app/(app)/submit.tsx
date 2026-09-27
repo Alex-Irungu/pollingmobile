@@ -18,7 +18,6 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -35,9 +34,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ApiError } from '../../src/api/client';
 import * as api from '../../src/api/endpoints';
-import { API_BASE_URL } from '../../src/api/config';
 import { Button } from '../../src/components/Button';
 import { VoteInput } from '../../src/components/VoteInput';
 import {
@@ -56,7 +53,13 @@ import {
   type PreparedPhoto,
 } from '../../src/hooks/usePhoto';
 import { useResultValidation } from '../../src/hooks/useResultValidation';
+import { useSubmissionQueue } from '../../src/hooks/useSubmissionQueue';
 import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
+import {
+  discardQueued,
+  flushQueue,
+  queueSubmission,
+} from '../../src/services/submissionQueue';
 import {
   colors,
   radius,
@@ -65,7 +68,7 @@ import {
   typography,
 } from '../../src/theme';
 
-type Phase = 'form' | 'sending' | 'done';
+type Phase = 'form' | 'review' | 'sending' | 'done';
 
 /**
  * Declared outside StyleSheet.create, which widens each entry to a
@@ -106,6 +109,8 @@ export default function SubmitScreen() {
   const [phase, setPhase] = useState<Phase>('form');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string>('');
+  const [tryingNow, setTryingNow] = useState(false);
+  const queue = useSubmissionQueue();
 
   const candidates = posting?.candidates ?? [];
   const station = posting?.polling_station ?? null;
@@ -138,28 +143,14 @@ export default function SubmitScreen() {
     }
   }
 
-  function confirmSubmit() {
+  function goToReview() {
     if (!validation.canSubmit || !station || !race) return;
 
-    // Ping /health/ now so Render starts waking up while the agent reads the
-    // confirmation. By the time they tap Send, the cold-start is behind us.
+    // Ping /health/ now so Render starts waking up while the agent reviews.
+    // By the time they confirm, the cold-start is behind us.
     api.warmUp();
-
-    const summary = candidates
-      .map((c) => `${c.full_name}: ${Number.parseInt(votes[c.id] ?? '0', 10) || 0}`)
-      .join('\n');
-
-    // A last explicit confirmation, showing the figures back. Once sent, the
-    // agent cannot edit -- corrections go through the command centre -- so this
-    // is the last chance to catch a mis-key.
-    Alert.alert(
-      'Send this result?',
-      `${station.display_name}\n\n${summary}\n\nValid: ${validation.candidateTotal}\nRejected: ${rejectedVotes || '0'}\nTotal cast: ${totalCast}\n\nYou cannot edit this after sending.`,
-      [
-        { text: 'Check again', style: 'cancel' },
-        { text: 'Send', style: 'default', onPress: submit },
-      ],
-    );
+    setSubmitError(null);
+    setPhase('review');
   }
 
   async function submit() {
@@ -168,97 +159,59 @@ export default function SubmitScreen() {
     setPhase('sending');
     setSubmitError(null);
 
-    // Wait for the server to be reachable before starting the upload.
-    // Render free-tier sleeps after inactivity and can take 30-60 s to wake;
-    // giving clear feedback here is better than a silent 120-second stall.
-    setProgress('Connecting to server…');
-    await (async () => {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 55_000);
-      try {
-        await fetch(`${API_BASE_URL}/health/`, { signal: ctrl.signal });
-      } catch {
-        // If health check fails, continue anyway — upload has its own timeout.
-      } finally {
-        clearTimeout(t);
-      }
-    })();
+    // Everything is written to this phone first. From this line on, the
+    // result cannot be lost: if the network fails at any point below, the
+    // queue keeps retrying on its own until it lands.
+    setProgress('Saving safely on this phone…');
+    await queueSubmission({
+      photoUri: photo.uri,
+      photoName: `form-${station.iebc_code}.jpg`,
+      payload: {
+        race: race.id,
+        polling_station: station.id,
+        total_registered_voters: registeredVoters ?? 0,
+        total_valid_votes: validation.candidateTotal,
+        total_rejected_votes: Number.parseInt(rejectedVotes, 10) || 0,
+        total_votes_cast: totalCast,
+        notes: notes.trim(),
+        candidate_votes: candidates.map((candidate) => ({
+          candidate: candidate.id,
+          votes: Number.parseInt(votes[candidate.id] ?? '0', 10) || 0,
+        })),
+      },
+    });
 
-    let lastError: unknown = null;
+    const outcome = await flushQueue(setProgress);
 
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (attempt > 0) {
-        setProgress('Slow connection — retrying automatically…');
-        await new Promise<void>((r) => setTimeout(r, 3000));
-      }
-
-      try {
-        // Upload the photo first and separately. If the submission then fails,
-        // the image is already on the server and a retry does not re-send it --
-        // which on a weak connection is the difference between one transfer and
-        // several.
-        setProgress('Uploading the form photo…');
-        const attachment = await api.uploadFile({
-          uri: photo.uri,
-          name: `form-${station.iebc_code}.jpg`,
-          mimeType: 'image/jpeg',
-          purpose: 'RESULT_FORM',
-        });
-
-        setProgress('Sending the figures…');
-        await api.submitResult({
-          race: race.id,
-          polling_station: station.id,
-          total_registered_voters: registeredVoters ?? 0,
-          total_valid_votes: validation.candidateTotal,
-          total_rejected_votes: Number.parseInt(rejectedVotes, 10) || 0,
-          total_votes_cast: totalCast,
-          // The storage key, not the signed url: this is persisted on the
-          // submission, and a signed url would stop resolving minutes later,
-          // leaving the result with no viewable evidence.
-          form_34a_photo: attachment.key,
-          notes: notes.trim(),
-          candidate_votes: candidates.map((candidate) => ({
-            candidate: candidate.id,
-            votes: Number.parseInt(votes[candidate.id] ?? '0', 10) || 0,
-          })),
-        });
-
-        setPhase('done');
-        refetch();
-        queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
-        return;
-      } catch (err) {
-        lastError = err;
-
-        // "Already submitted" means the first attempt reached the server and
-        // saved correctly, but the mobile timed out before the 201 arrived.
-        // Treat this as a success: refresh posting data and show done screen.
-        if (
-          err instanceof ApiError &&
-          !err.isNetworkError &&
-          err.message.toLowerCase().includes('already')
-        ) {
-          setPhase('done');
-          refetch();
-          queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
-          return;
-        }
-
-        // Only retry transient network/timeout errors.
-        if (!(err instanceof ApiError) || !err.isNetworkError) break;
-      }
+    if (outcome === 'sent') {
+      setPhase('done');
+      refetch();
+      queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
+      return;
     }
 
+    // 'waiting': saved and will auto-send. The queue guard below renders the
+    // saved screen. 'rejected': the rejected guard below renders the reason.
     setPhase('form');
     setProgress('');
-    setSubmitError(
-      lastError instanceof ApiError
-        ? lastError.isNetworkError 
-          ? 'No connection — your figures are saved here. Move to an area with signal and try again.'
-          : lastError.message
-        : 'Could not send. Please try again.',
-    );
+  }
+
+  /** After a server rejection: restore the figures into the form so the agent
+   * corrects them rather than retyping everything at midnight. */
+  async function correctRejected() {
+    if (queue.kind !== 'rejected') return;
+    const { payload } = queue.record;
+
+    const restored: Record<string, string> = {};
+    for (const cv of payload.candidate_votes) restored[cv.candidate] = String(cv.votes);
+    setVotes(restored);
+    setRejectedVotes(String(payload.total_rejected_votes));
+    setNotes(payload.notes ?? '');
+    setPhoto(null);
+    setSubmitError(queue.record.lastError);
+
+    await discardQueued();
+    setPhase('form');
   }
 
   if (isLoading && !posting) {
@@ -318,6 +271,75 @@ export default function SubmitScreen() {
     );
   }
 
+  // --- Queued: saved on the phone, sending itself ------------------------- //
+
+  if (queue.kind === 'pending' && phase !== 'done' && phase !== 'sending') {
+    return (
+      <View style={[styles.root, styles.centre, { paddingTop: insets.top }]}>
+        <Animated.View entering={FadeInDown.duration(400)} style={styles.successWrap}>
+          <View style={[styles.successIcon, styles.queuedIcon]}>
+            <Ionicons name="cloud-upload-outline" size={40} color={colors.white} />
+          </View>
+          <Text style={styles.successTitle}>Result saved</Text>
+          <Text style={styles.successBody}>
+            Your figures and the form photo are safe on this phone. The app is
+            sending them by itself and will keep trying until they reach the
+            command centre — you do not need to stay on this screen.
+          </Text>
+          <Card style={styles.successCard}>
+            <DetailRow label="Stream" value={station.display_name} />
+            <DetailRow
+              label="Saved at"
+              value={new Date(queue.record.queuedAt).toLocaleTimeString('en-KE')}
+            />
+            <DetailRow
+              label="Status"
+              value={queue.sending ? 'Sending now…' : 'Waiting for signal'}
+            />
+          </Card>
+          <Button
+            label={tryingNow || queue.sending ? 'Trying…' : 'Try to send now'}
+            onPress={async () => {
+              setTryingNow(true);
+              const outcome = await flushQueue();
+              setTryingNow(false);
+              if (outcome === 'sent') {
+                setPhase('done');
+                refetch();
+                queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
+              }
+            }}
+            disabled={tryingNow || queue.sending}
+            style={styles.successButton}
+          />
+          <Button
+            label="Back to My Station"
+            variant="ghost"
+            onPress={() => router.replace('/(app)')}
+          />
+        </Animated.View>
+      </View>
+    );
+  }
+
+  if (queue.kind === 'rejected' && phase !== 'done') {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top + spacing.lg }]}>
+        <View style={styles.guard}>
+          <Banner
+            tone="error"
+            title="The server could not accept this result"
+            message={
+              queue.record.lastError ??
+              'Check the figures against your form and send it again.'
+            }
+          />
+          <Button label="Correct the figures and resend" onPress={correctRejected} />
+        </View>
+      </View>
+    );
+  }
+
   // --- Success ------------------------------------------------------------ //
 
   if (phase === 'done') {
@@ -348,6 +370,116 @@ export default function SubmitScreen() {
             onPress={() => router.push('/(app)/history')}
           />
         </Animated.View>
+      </View>
+    );
+  }
+
+  // --- Review: the last look before it goes ------------------------------- //
+
+  if (phase === 'review' && photo) {
+    return (
+      <View style={styles.root}>
+        <LinearGradient
+          colors={[colors.green, colors.greenLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.header, { paddingTop: insets.top + spacing.md }]}
+        >
+          <Text style={styles.headerTitle}>Check before sending</Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {station.display_name}
+          </Text>
+        </LinearGradient>
+
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: insets.bottom + spacing.xxxl },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.block}>
+            <SectionLabel>Compare against your form</SectionLabel>
+            <Card>
+              <Image
+                source={{ uri: photo.uri }}
+                style={previewImageStyle}
+                contentFit="contain"
+                transition={150}
+              />
+              <Text style={styles.reviewHint}>
+                Read each figure off the photo above and check it against the
+                row below. This is the last chance to catch a mis-key — after
+                sending, corrections go through the command centre.
+              </Text>
+            </Card>
+          </View>
+
+          <View style={styles.block}>
+            <SectionLabel>The figures you will send</SectionLabel>
+            <Card>
+              {candidates.map((candidate, index) => (
+                <View
+                  key={candidate.id}
+                  style={[
+                    styles.reviewRow,
+                    index < candidates.length - 1 && styles.reviewDivider,
+                  ]}
+                >
+                  <View style={styles.flex}>
+                    <Text style={styles.reviewName}>{candidate.full_name}</Text>
+                    <Text style={styles.reviewParty}>
+                      {candidate.party_abbreviation || 'INDEPENDENT'}
+                    </Text>
+                  </View>
+                  <Text style={styles.reviewVotes}>
+                    {formatNumber(Number.parseInt(votes[candidate.id] ?? '0', 10) || 0)}
+                  </Text>
+                </View>
+              ))}
+              <View style={styles.reviewTotals}>
+                <DetailRow
+                  label="Total valid votes"
+                  value={formatNumber(validation.candidateTotal)}
+                  mono
+                />
+                <DetailRow
+                  label="Rejected ballots"
+                  value={formatNumber(Number.parseInt(rejectedVotes, 10) || 0)}
+                  mono
+                />
+                <DetailRow label="Total votes cast" value={formatNumber(totalCast)} mono />
+                {validation.turnoutPercent !== null ? (
+                  <DetailRow
+                    label="Turnout"
+                    value={`${validation.turnoutPercent.toFixed(1)}%`}
+                    mono
+                  />
+                ) : null}
+              </View>
+            </Card>
+          </View>
+
+          {validation.warnings.length ? (
+            <View style={styles.block}>
+              {validation.warnings.map((issue, index) => (
+                <Banner
+                  key={`w${index}`}
+                  tone="warning"
+                  title="Worth a second look"
+                  message={issue.message}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          <Button label="These figures match my form — send" onPress={submit} />
+          <Button
+            label="Go back and edit"
+            variant="ghost"
+            onPress={() => setPhase('form')}
+          />
+        </ScrollView>
       </View>
     );
   }
@@ -597,7 +729,7 @@ export default function SubmitScreen() {
               label={
                 validation.canSubmit ? 'Review and send' : 'Fix the items above to send'
               }
-              onPress={confirmSubmit}
+              onPress={goToReview}
               disabled={!validation.canSubmit}
             />
           )}
@@ -770,4 +902,27 @@ const styles = StyleSheet.create({
   },
   successCard: { width: '100%', marginTop: spacing.sm },
   successButton: { marginTop: spacing.sm },
+  queuedIcon: { backgroundColor: colors.pending },
+  reviewHint: {
+    ...typography.caption,
+    color: colors.inkMuted,
+    lineHeight: 19,
+    marginTop: spacing.md,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  reviewDivider: { borderBottomWidth: 1, borderBottomColor: colors.line },
+  reviewName: { ...typography.bodyStrong, color: colors.ink },
+  reviewParty: { ...typography.caption, fontSize: 12, color: colors.inkMuted, marginTop: 1 },
+  reviewVotes: { ...typography.numeric, fontSize: 20, color: colors.ink },
+  reviewTotals: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.lineStrong,
+  },
 });

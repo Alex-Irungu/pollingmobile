@@ -1,26 +1,41 @@
 /**
  * Signed-in tab navigation.
  *
- * Three tabs, and no more. An agent has three jobs -- know your station,
- * submit the result, talk to the command centre -- and every extra
- * destination is something to get lost in at 11pm. There is deliberately no
- * dashboard and no tally: the API would not serve them to a field agent
- * anyway, and an agent watching the running total is an agent under pressure
- * to report a helpful number.
+ * Four tabs, and no more. An agent's jobs -- know your station, submit the
+ * result, talk to the command centre, manage your own account -- and every
+ * extra destination is something to get lost in at 11pm. The live tally the
+ * campaign asked for lives on My Station rather than as a fifth tab: ambient
+ * context on the screen the app opens to, not a dashboard to get lost in.
  */
 
+import { useQueryClient } from '@tanstack/react-query';
 import { Tabs } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUnreadCount } from '../../src/hooks/useChat';
+import { postingQueryKey } from '../../src/hooks/usePosting';
+import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
+import { onQueueSent, startQueueWatcher } from '../../src/services/submissionQueue';
 import { colors, spacing, typography } from '../../src/theme';
 import { TabIcon } from '../../src/components/TabIcon';
 
 export default function AppLayout() {
   const unread = useUnreadCount();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+
+  // The offline submission queue retries on its own for as long as the agent
+  // is signed in. When a queued result finally lands, My Station and History
+  // must reflect it without waiting for their next natural refetch.
+  useEffect(() => {
+    startQueueWatcher();
+    return onQueueSent(() => {
+      queryClient.invalidateQueries({ queryKey: postingQueryKey });
+      queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
+    });
+  }, [queryClient]);
 
   // Android's 3-button and gesture nav bars both live in this inset. Without
   // adding it to the tab bar's height/padding, the bar renders *behind* the

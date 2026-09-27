@@ -47,7 +47,7 @@ import {
 } from '../services/locationTracking';
 import { restartApp } from '../services/restart';
 import { getBiometricCapability, promptBiometric } from '../services/biometrics';
-import { postingQueryKey } from '../hooks/usePosting';
+import { clearPostingCache, postingQueryKey } from '../hooks/usePosting';
 
 type Status = 'restoring' | 'signedOut' | 'signedIn';
 
@@ -116,6 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Agent opted into biometric re-entry: preserve the refresh token as the
       // biometric credential so they can sign back in without typing a password,
       // and clear the main session locally without blacklisting the token.
+      // The device stays bound to this agent, so their station stays cached
+      // on disk too: the next fingerprint sign-in opens straight onto it
+      // instead of a spinner waiting on the network.
       await setBiometricRefreshToken(refresh);
       setAccessToken(null);
       await setRefreshToken(null);
@@ -123,24 +126,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (refresh) await api.logout(refresh).catch(() => undefined);
       await clearTokens();
       await clearBiometricCredential();
+      // A full sign-out releases the device. The next agent to use it must not
+      // see the previous one's station.
+      await clearPostingCache();
     }
-    setStatus('signedOut');
 
     // Credentials are gone, so the app is safe whatever happens next. Now hand
-    // the next sign-in a clean process: see services/restart.ts for why an
-    // in-process sign-out cannot be made reliable. The agent sees the native
-    // splash for a moment and lands on the login screen, exactly as if they
-    // had force-closed and reopened the app.
+    // the next sign-in a clean runtime: see services/restart.ts. This happens
+    // BEFORE the status flip on purpose. Flipping first rendered the login
+    // screen inside the runtime that was about to be torn down, and on a slow
+    // phone that screen was live for a second or more -- long enough to tap
+    // the fingerprint button and commit a biometric prompt against a dying
+    // host, which closes the app. The agent instead sees the screen they were
+    // on hold still, then the splash, then a login screen in a fresh runtime.
     const restarted = await restartApp();
+    if (restarted) return;
 
-    if (!restarted) {
-      // No updates module to reload through (Expo Go, dev client). Fall back
-      // to clearing in-process. After the status flip, so the clear lands on an
-      // unmounted tree rather than yanking data out from under screens still
-      // rendering it. The next agent on this device must not see the previous
-      // one's station or messages.
-      setTimeout(() => queryClient.clear(), 0);
-    }
+    // No updates module to reload through (Expo Go, dev client). Fall back to
+    // clearing in-process. The cache clear runs after the status flip, so it
+    // lands on an unmounted tree rather than yanking data out from under
+    // screens still rendering it.
+    setStatus('signedOut');
+    setTimeout(() => queryClient.clear(), 0);
   }, [queryClient]);
 
   useEffect(() => {
@@ -206,26 +213,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (outcome === 'unavailable') return 'unavailable';
       if (outcome !== 'success') return 'failed';
 
-      const newAccess = await refreshAccessTokenWith(bioRefresh);
-      if (!newAccess) {
+      const tokens = await refreshAccessTokenWith(bioRefresh);
+      if (!tokens) {
         // Refresh token has expired or been revoked server-side.
         await clearBiometricCredential();
         return 'unavailable';
       }
 
       invalidateSession();
-      setAccessToken(newAccess);
-      // Restore the main session credential too. Without this the session
-      // holds only a 15-minute access token: the first 401 after that has no
-      // refresh token to spend and drops the agent back to the login screen
-      // mid-shift.
-      await setRefreshToken(bioRefresh);
+      setAccessToken(tokens.access);
+      // The server rotated the credential we just spent, so both copies are
+      // replaced with the new one: the main session's, without which the
+      // first 401 fifteen minutes from now has no refresh token and drops the
+      // agent to the login screen mid-shift, and the biometric copy, without
+      // which the next fingerprint sign-in presents a blacklisted token.
+      await setRefreshToken(tokens.refresh);
+      await setBiometricRefreshToken(tokens.refresh);
       setLastSignInMethod('biometric');
       prefetchPosting(queryClient);
       setStatus('signedIn');
-      requestLocationPermissions().then((granted) => {
-        if (granted) startLocationTracking();
-      });
+      // Re-entry, not first entry: permissions were asked for at the password
+      // sign-in. Asking again here put a system dialog -- or on Android 11+,
+      // the Settings app -- in front of the agent on every fingerprint login,
+      // and backgrounded the app in the same instant the location service was
+      // trying to start.
+      resumeLocationTrackingIfPermitted();
       return 'success';
     } catch {
       return 'failed';

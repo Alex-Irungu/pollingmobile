@@ -73,6 +73,24 @@ export async function clearTokens(): Promise<void> {
   await setRefreshToken(null);
 }
 
+/**
+ * Stores the refresh token the server just issued, everywhere a copy lives.
+ *
+ * The backend rotates refresh tokens: every /auth/refresh/ answers with a new
+ * one and blacklists the one it was given. A client that keeps the old token
+ * therefore has exactly one working refresh in it, after which the session
+ * dies -- fifteen minutes into a shift, from the agent's point of view for no
+ * reason. The biometric credential is a copy of the same token, so it must be
+ * rotated in step or the next fingerprint sign-in fails with "no longer
+ * valid" for the same reason.
+ */
+export async function persistRotatedRefreshToken(token: string): Promise<void> {
+  await setRefreshToken(token);
+  if (await getBiometricEnabled()) {
+    await setBiometricRefreshToken(token).catch(() => undefined);
+  }
+}
+
 // ── Biometric credential storage ─────────────────────────────────────────── //
 
 const BIOMETRIC_ENABLED_KEY = 'sentinel.biometricEnabled';

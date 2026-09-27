@@ -145,6 +145,31 @@ export interface SubmissionResponse {
   }[];
 }
 
+export interface LiveTallyCandidate {
+  id: string;
+  full_name: string;
+  party: string;
+  votes: number;
+  percentage: number;
+  /** True for the campaign's own candidate in this race. */
+  is_my_candidate: boolean;
+}
+
+export interface LiveTally {
+  race: { id: string; title: string; race_type: string };
+  candidates: LiveTallyCandidate[];
+  summary: {
+    total_votes: number;
+    total_valid_votes: number;
+    total_rejected_votes: number;
+    total_registered_voters: number;
+    turnout_percentage: number;
+    stations_reporting: number;
+    total_stations: number;
+    reporting_percentage: number;
+  };
+}
+
 export type MessageKind = 'TEXT' | 'IMAGE' | 'AUDIO' | 'SYSTEM';
 
 export interface ChatMessage {

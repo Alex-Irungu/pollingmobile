@@ -3,22 +3,18 @@
  *
  * Sign-out cannot be done cleanly in-process. The signed-in part of the app
  * leaves state in a dozen places that outlive it: requests on the wire, poll
- * timers, a React Query cache, reanimated shared values, Expo Router's
- * navigator state, and -- the expensive one -- native modules like
- * expo-task-manager and the Android location foreground service, which is
- * stopped asynchronously and only really gone some seconds later.
+ * timers, a React Query cache, reanimated shared values and Expo Router's
+ * navigator state.
  *
- * Signing straight back in re-enters that half-dismantled process, and
- * starting a location foreground service while the previous instance is still
- * being destroyed throws natively, past any JS try/catch, closing the app. The
- * agent then signs in a second time -- into a fresh process -- and it works.
- * That asymmetry is the whole bug.
+ * Rather than chase each subsystem's JS teardown, sign-out reloads the bundle.
+ * Every re-login then starts from fresh JS state, which is the one path
+ * already known to be reliable for everything that lives in JS. This is what
+ * the Dispatch web app gets for free from `window.location.href = '/login'`.
  *
- * Rather than chase each subsystem's teardown, sign-out restarts the runtime.
- * Every re-login is then a first-login in a clean process, which is the one
- * path already known to be reliable. This is what the Dispatch web app gets
- * for free from `window.location.href = '/login'`: a hard reload that throws
- * the whole document away.
+ * What a reload is NOT: a new process. The Android Activity and any native
+ * module state survive it untouched. Anything that must be remembered across
+ * a sign-out cannot live in a module variable -- a variable is reset to its
+ * initial value by exactly the event it was meant to remember.
  */
 
 import * as Updates from 'expo-updates';

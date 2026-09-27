@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as api from '../../src/api/endpoints';
 import { Button } from '../../src/components/Button';
 import { Card, DetailRow, LoadingState, SectionLabel } from '../../src/components/ui';
-import { clearPostingCache, usePosting } from '../../src/hooks/usePosting';
+import { usePosting } from '../../src/hooks/usePosting';
 import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
 import {
   hasLocationPermission,
@@ -107,9 +107,6 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             setSigningOut(true);
-            // Drop the cached posting: the next agent to use this device must
-            // not see the previous agent's station.
-            await clearPostingCache();
             await signOut();
           },
         },

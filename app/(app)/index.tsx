@@ -37,7 +37,11 @@ import {
   StatusPill,
   formatNumber,
 } from '../../src/components/ui';
-import { clearPostingCache, usePosting } from '../../src/hooks/usePosting';
+import { PanicButton } from '../../src/components/PanicButton';
+import { useLiveTally } from '../../src/hooks/useLiveTally';
+import { usePosting } from '../../src/hooks/usePosting';
+import { useSubmissionQueue } from '../../src/hooks/useSubmissionQueue';
+import { flushQueue } from '../../src/services/submissionQueue';
 import { useAuth } from '../../src/store/auth';
 import {
   HIT_SLOP,
@@ -53,6 +57,8 @@ export default function MyStationScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const { data, isLoading, error, refetch, isRefetching } = usePosting();
+  const queue = useSubmissionQueue();
+  const { data: tally } = useLiveTally(data?.race?.id);
 
   const [signingOut, setSigningOut] = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
@@ -79,9 +85,6 @@ export default function MyStationScreen() {
           style: 'destructive',
           onPress: async () => {
             setSigningOut(true);
-            // Drop the cached posting: the next agent to use this device must
-            // not see the previous agent's station.
-            await clearPostingCache();
             await signOut();
           },
         },
@@ -223,6 +226,47 @@ export default function MyStationScreen() {
           </View>
         ) : null}
 
+        {queue.kind === 'pending' ? (
+          <View style={styles.block}>
+            <SectionLabel>Your submission</SectionLabel>
+            <Card>
+              <View style={styles.queuedHeader}>
+                <Ionicons name="cloud-upload-outline" size={18} color={colors.pending} />
+                <Text style={styles.queuedTitle}>
+                  {queue.sending ? 'Sending now…' : 'Saved — waiting for signal'}
+                </Text>
+              </View>
+              <Text style={styles.submissionNote}>
+                Your result is safe on this phone and the app is sending it by
+                itself. Nothing more is needed from you.
+              </Text>
+              <DetailRow
+                label="Saved at"
+                value={new Date(queue.record.queuedAt).toLocaleString('en-KE')}
+              />
+              <Button
+                label={queue.sending ? 'Sending…' : 'Try to send now'}
+                variant="secondary"
+                onPress={() => void flushQueue()}
+                disabled={queue.sending}
+                style={styles.queuedButton}
+              />
+            </Card>
+          </View>
+        ) : queue.kind === 'rejected' ? (
+          <View style={styles.block}>
+            <Banner
+              tone="error"
+              title="Your result needs a correction"
+              message={
+                queue.record.lastError ??
+                'The server could not accept the figures. Open Submit to correct them.'
+              }
+              action={{ label: 'Open Submit', onPress: () => router.push('/(app)/submit') }}
+            />
+          </View>
+        ) : null}
+
         {submission ? (
           <View style={styles.block}>
             <SectionLabel>Your submission</SectionLabel>
@@ -259,7 +303,7 @@ export default function MyStationScreen() {
               />
             </Card>
           </View>
-        ) : station && race ? (
+        ) : station && race && queue.kind === 'idle' ? (
           <View style={styles.block}>
             <Card>
               <View style={styles.ctaHeader}>
@@ -302,7 +346,74 @@ export default function MyStationScreen() {
           </View>
         ) : null}
 
-        {data?.candidates.length ? (
+        {tally && tally.candidates.length ? (
+          <View style={styles.block}>
+            <View style={styles.tallyHeaderRow}>
+              <SectionLabel>Live tally — {tally.race.title}</SectionLabel>
+            </View>
+            <Card>
+              <View style={styles.tallyMetaRow}>
+                <View style={styles.liveDot} />
+                <Text style={styles.tallyMeta}>
+                  {formatNumber(tally.summary.stations_reporting)} of{' '}
+                  {formatNumber(tally.summary.total_stations)} stations reporting
+                  {' · '}updates automatically
+                </Text>
+              </View>
+              {tally.candidates.map((candidate, index) => {
+                const share = Math.max(0, Math.min(100, candidate.percentage));
+                return (
+                  <View
+                    key={candidate.id}
+                    style={[
+                      styles.tallyRow,
+                      index < tally.candidates.length - 1 && styles.candidateDivider,
+                    ]}
+                  >
+                    <View style={styles.tallyNameRow}>
+                      <Text
+                        style={[
+                          styles.candidateName,
+                          candidate.is_my_candidate && styles.myCandidateName,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {candidate.full_name}
+                        {candidate.is_my_candidate ? '  ★' : ''}
+                      </Text>
+                      <Text style={styles.tallyVotes}>
+                        {formatNumber(candidate.votes)}
+                      </Text>
+                    </View>
+                    <View style={styles.tallyBarTrack}>
+                      <View
+                        style={[
+                          styles.tallyBarFill,
+                          { width: `${share}%` },
+                          candidate.is_my_candidate
+                            ? styles.tallyBarMine
+                            : styles.tallyBarOther,
+                        ]}
+                      />
+                    </View>
+                    <View style={styles.tallyNameRow}>
+                      <Text style={styles.candidateParty}>
+                        {candidate.party || 'INDEPENDENT'}
+                      </Text>
+                      <Text style={styles.tallyPercent}>
+                        {share.toFixed(1)}%
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+              <Text style={styles.tallyFootnote}>
+                Campaign's own tally from agent reports — not official IEBC
+                results.
+              </Text>
+            </Card>
+          </View>
+        ) : data?.candidates.length ? (
           <View style={styles.block}>
             <SectionLabel>Ballot ({data.candidates.length} candidates)</SectionLabel>
             <Card>
@@ -328,6 +439,15 @@ export default function MyStationScreen() {
                 </View>
               ))}
             </Card>
+          </View>
+        ) : null}
+
+        {station ? (
+          <View style={styles.block}>
+            <PanicButton
+              stationDisplayName={station.display_name}
+              stationIebcCode={station.iebc_code}
+            />
           </View>
         ) : null}
 
@@ -454,6 +574,53 @@ const styles = StyleSheet.create({
   ballotNumberText: { ...typography.label, color: colors.gold, fontSize: 13 },
   candidateName: { ...typography.bodyStrong, color: colors.ink },
   candidateParty: { ...typography.caption, fontSize: 12, color: colors.inkMuted, marginTop: 1 },
+  queuedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  queuedTitle: { ...typography.heading, color: colors.pending },
+  queuedButton: { marginTop: spacing.md },
+  tallyHeaderRow: { flexDirection: 'row', alignItems: 'center' },
+  tallyMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.verified,
+  },
+  tallyMeta: { ...typography.caption, fontSize: 12, color: colors.inkMuted, flex: 1 },
+  tallyRow: { paddingVertical: spacing.md, gap: 6 },
+  tallyNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  myCandidateName: { color: colors.green },
+  tallyVotes: { ...typography.numeric, fontSize: 16, color: colors.ink },
+  tallyPercent: { ...typography.caption, fontSize: 12, color: colors.inkMuted },
+  tallyBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceAlt,
+    overflow: 'hidden',
+  },
+  tallyBarFill: { height: '100%', borderRadius: 4 },
+  tallyBarMine: { backgroundColor: colors.green },
+  tallyBarOther: { backgroundColor: colors.gold },
+  tallyFootnote: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: spacing.sm,
+  },
   footer: {
     ...typography.caption,
     fontSize: 12,

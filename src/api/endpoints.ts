@@ -15,6 +15,7 @@ import type {
   Attachment,
   ChatMessage,
   ConversationInfo,
+  LiveTally,
   LoginResponse,
   MessageListResponse,
   SubmissionHistoryResponse,
@@ -129,6 +130,15 @@ export function submitResult(payload: SubmitResultPayload) {
     method: 'POST',
     body: payload,
   });
+}
+
+/**
+ * Live vote totals for a race, aggregated across every station that has
+ * reported. The same numbers the command centre's dashboard shows, polled
+ * rather than pushed -- see useLiveTally for the cadence.
+ */
+export function fetchLiveTally(raceId: string) {
+  return apiRequest<LiveTally>(`/tally/race/${raceId}/`);
 }
 
 // --------------------------------------------------------------------------- //
