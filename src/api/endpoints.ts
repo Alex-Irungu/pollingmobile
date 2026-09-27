@@ -141,6 +141,17 @@ export function fetchLiveTally(raceId: string) {
   return apiRequest<LiveTally>(`/tally/race/${raceId}/`);
 }
 
+/**
+ * Latest app build the campaign has shipped, so an outdated APK can say so.
+ * The backend reads these from environment variables; ops bump them when a
+ * new build is distributed.
+ */
+export function fetchAppVersion() {
+  return apiRequest<{
+    android: { min_version: string; latest_version: string; download_url: string };
+  }>('/app/version/');
+}
+
 // --------------------------------------------------------------------------- //
 // Chat
 // --------------------------------------------------------------------------- //

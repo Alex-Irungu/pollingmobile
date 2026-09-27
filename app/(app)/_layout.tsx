@@ -14,9 +14,14 @@ import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useUnreadCount } from '../../src/hooks/useChat';
+import {
+  conversationQueryKey,
+  messagesQueryKey,
+  useUnreadCount,
+} from '../../src/hooks/useChat';
 import { postingQueryKey } from '../../src/hooks/usePosting';
 import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
+import { onOutboxEvent, startOutboxWatcher } from '../../src/services/messageOutbox';
 import { onQueueSent, startQueueWatcher } from '../../src/services/submissionQueue';
 import { colors, spacing, typography } from '../../src/theme';
 import { TabIcon } from '../../src/components/TabIcon';
@@ -31,10 +36,21 @@ export default function AppLayout() {
   // must reflect it without waiting for their next natural refetch.
   useEffect(() => {
     startQueueWatcher();
-    return onQueueSent(() => {
+    startOutboxWatcher();
+    const stopQueue = onQueueSent(() => {
       queryClient.invalidateQueries({ queryKey: postingQueryKey });
       queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
     });
+    // When a queued message finally lands, pull the server copy so the
+    // pending bubble swaps for the real one.
+    const stopOutbox = onOutboxEvent(() => {
+      queryClient.invalidateQueries({ queryKey: messagesQueryKey });
+      queryClient.invalidateQueries({ queryKey: conversationQueryKey });
+    });
+    return () => {
+      stopQueue();
+      stopOutbox();
+    };
   }, [queryClient]);
 
   // Android's 3-button and gesture nav bars both live in this inset. Without
@@ -119,6 +135,13 @@ export default function AppLayout() {
         options={{
           // Reachable via router.push('/(app)/history') from Profile, but not
           // one of the tab bar's four daily-use destinations.
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="diagnostics"
+        options={{
+          // For the bad day, via Profile -- not a daily destination.
           href: null,
         }}
       />

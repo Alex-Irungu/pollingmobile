@@ -11,9 +11,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -51,6 +53,7 @@ const LEVEL_LABEL: Record<string, string> = {
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
   const { data, isLoading } = usePosting();
@@ -187,6 +190,37 @@ export default function ProfileScreen() {
           </Card>
         </View>
 
+        <View style={styles.block}>
+          <SectionLabel>Help</SectionLabel>
+          <Card>
+            <Pressable
+              onPress={() => router.push('/(app)/history')}
+              style={styles.linkRow}
+              accessibilityRole="button"
+            >
+              <Ionicons name="time-outline" size={20} color={colors.green} />
+              <Text style={styles.linkText}>Submission history</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.inkFaint} />
+            </Pressable>
+            <View style={styles.linkDivider} />
+            <Pressable
+              onPress={() => router.push('/(app)/diagnostics')}
+              style={styles.linkRow}
+              accessibilityRole="button"
+            >
+              <Ionicons name="pulse-outline" size={20} color={colors.green} />
+              <View style={styles.linkLabels}>
+                <Text style={styles.linkText}>Diagnostics</Text>
+                <Text style={styles.linkSubtitle}>
+                  Connection, version and anything waiting to send — for when
+                  you call support.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.inkFaint} />
+            </Pressable>
+          </Card>
+        </View>
+
         <Button
           label="Logout"
           onPress={handleLogout}
@@ -241,6 +275,22 @@ const styles = StyleSheet.create({
   rowLabels: { flex: 1 },
   rowTitle: { ...typography.bodyStrong, color: colors.ink },
   rowSubtitle: { ...typography.caption, color: colors.inkMuted, marginTop: 1, lineHeight: 17 },
-  locationButton: { marginTop: spacing.base },
+  locationButton: { marginTop: spacing.md },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  linkDivider: { height: 1, backgroundColor: colors.line },
+  linkLabels: { flex: 1 },
+  linkText: { ...typography.bodyStrong, color: colors.ink, flex: 1 },
+  linkSubtitle: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.inkMuted,
+    marginTop: 1,
+    lineHeight: 16,
+  },
   logoutButton: { marginTop: spacing.sm },
 });

@@ -20,8 +20,12 @@ import {
 import { BiometricSetupSheet } from '../src/components/BiometricSetupSheet';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { getBiometricCapability } from '../src/services/biometrics';
+import { initMonitoring, wrapRoot } from '../src/services/monitoring';
 import { AuthProvider, useAuth } from '../src/store/auth';
 import { colors } from '../src/theme';
+
+// Before anything renders: a crash during provider setup must still report.
+initMonitoring();
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -137,7 +141,7 @@ function NavigationGate() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     // Outside every provider on purpose: a failure while building the query
     // client, restoring the session or mounting the navigator must still land
@@ -156,6 +160,8 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
+
+export default wrapRoot(RootLayout);
 
 const styles = StyleSheet.create({
   root: { flex: 1 },

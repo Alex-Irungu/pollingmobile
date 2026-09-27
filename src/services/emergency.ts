@@ -9,18 +9,17 @@
  * So the alert is fire-and-hard-to-kill: it sends through the existing chat
  * (which the command centre already watches, with an unread badge and a
  * dashboard) rather than a new channel nobody is looking at, it does not
- * wait for a GPS fix if a recent position is already known, and it retries
- * by itself for several minutes before giving up. The button reflects the
- * state but never asks the agent to do anything twice.
+ * wait for a GPS fix if a recent position is already known, and it goes
+ * through the persistent outbox -- written to storage before the first
+ * network attempt, retried for as long as it takes, surviving an app kill.
+ * The button reflects the state but never asks the agent to do anything
+ * twice.
  */
 
 import * as Location from 'expo-location';
 
-import { ApiError } from '../api/client';
 import * as api from '../api/endpoints';
-
-const MAX_ATTEMPTS = 12;
-const RETRY_DELAY_MS = 15_000;
+import { enqueueMessage, onOutboxEvent } from './messageOutbox';
 
 export type EmergencyStatus = 'idle' | 'sending' | 'sent' | 'failed';
 
@@ -40,18 +39,6 @@ export function subscribeEmergency(listener: Listener): () => void {
 function setStatus(next: EmergencyStatus): void {
   status = next;
   listeners.forEach((fn) => fn(next));
-}
-
-function newUuid(): string {
-  // RFC4122 v4 -- the server validates client_uuid as a real UUID and
-  // rejects anything else with a 400. Same generator as chat.tsx.
-  const globalCrypto = (globalThis as { crypto?: Crypto }).crypto;
-  if (globalCrypto?.randomUUID) return globalCrypto.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const rand = (Math.random() * 16) | 0;
-    const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
-    return value.toString(16);
-  });
 }
 
 /**
@@ -80,14 +67,9 @@ async function getPositionFast(): Promise<{ lat: number; lng: number } | null> {
   return null;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
- * Send the alert. Resolves as soon as the outcome is known ('sent') or the
- * first attempt fails and background retries begin -- the caller should show
- * the returned status but never block on it.
+ * Send the alert. The message is on disk before this resolves; delivery is
+ * the outbox's job and can outlive this call, this screen, and this process.
  */
 export async function sendEmergencyAlert(station: {
   displayName: string | null;
@@ -116,31 +98,14 @@ export async function sendEmergencyAlert(station: {
     api.updateMyLocation(position.lat, position.lng).catch(() => undefined);
   }
 
-  const clientUuid = newUuid();
+  const clientUuid = await enqueueMessage({ body, tag: 'emergency' });
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      await api.sendMessage({ kind: 'TEXT', body, client_uuid: clientUuid });
-      setStatus('sent');
-      return;
-    } catch (error) {
-      // A duplicate means an earlier attempt landed and the response was
-      // lost. The command centre has the alert.
-      if (
-        error instanceof ApiError &&
-        !error.isNetworkError &&
-        error.status < 500
-      ) {
-        // The server understood and refused (or already has it). Retrying an
-        // identical request cannot help; surface what we know.
-        setStatus(error.message.toLowerCase().includes('exist') ? 'sent' : 'failed');
-        return;
-      }
-      if (attempt < MAX_ATTEMPTS) await delay(RETRY_DELAY_MS);
-    }
-  }
-
-  setStatus('failed');
+  // Track this entry until it leaves the outbox, one way or the other.
+  const unsubscribe = onOutboxEvent((event) => {
+    if (event.entry.clientUuid !== clientUuid) return;
+    unsubscribe();
+    setStatus(event.type === 'sent' ? 'sent' : 'failed');
+  });
 }
 
 /** Return the button to its resting state after a sent/failed banner. */

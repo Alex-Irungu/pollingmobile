@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { reportError } from '../services/monitoring';
 import { colors, radius, spacing, typography } from '../theme';
 
 /**
@@ -84,6 +85,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       // errors are left to the default handler so development redboxes and
       // console warnings keep behaving normally.
       if (isFatal) {
+        reportError(error, { source: 'global_fatal_handler' });
         reportToBoundary?.(toError(error));
         return;
       }
@@ -100,8 +102,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
-    // The console is the only sink available in a release build without a
-    // crash reporter wired up; it is still visible over `adb logcat`.
+    reportError(error, {
+      source: 'react_boundary',
+      componentStack: info.componentStack ?? '',
+    });
+    // Also to the console: visible over `adb logcat` even with no DSN set.
     console.error('[sentinel] unhandled error', error, info.componentStack);
   }
 

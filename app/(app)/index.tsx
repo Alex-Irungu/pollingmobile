@@ -40,6 +40,7 @@ import {
 import { DayChecklist } from '../../src/components/DayChecklist';
 import { LiveTallyCard } from '../../src/components/LiveTallyCard';
 import { PanicButton } from '../../src/components/PanicButton';
+import { UpdateBanner } from '../../src/components/UpdateBanner';
 import { useLiveTally } from '../../src/hooks/useLiveTally';
 import { usePosting } from '../../src/hooks/usePosting';
 import { useSubmissionQueue } from '../../src/hooks/useSubmissionQueue';
@@ -159,6 +160,8 @@ export default function MyStationScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <UpdateBanner />
+
         {notAnAgent ? (
           <View style={styles.block}>
             <Banner

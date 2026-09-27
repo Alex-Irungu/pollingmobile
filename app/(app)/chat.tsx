@@ -21,7 +21,7 @@ import {
   useAudioRecorderState,
 } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -49,6 +49,8 @@ import { ChatBubble } from '../../src/components/ChatBubble';
 import { Banner, EmptyState, LoadingState } from '../../src/components/ui';
 import { captureFormPhoto, pickFormPhoto } from '../../src/hooks/usePhoto';
 import { useMarkRead, useMessages, useSendMessage } from '../../src/hooks/useChat';
+import { useOutbox } from '../../src/hooks/useOutbox';
+import { enqueueMessage } from '../../src/services/messageOutbox';
 import {
   HIT_SLOP,
   MIN_TOUCH,
@@ -78,6 +80,33 @@ export default function ChatScreen() {
   const { data: messages, isLoading, error } = useMessages();
   const sendMessage = useSendMessage();
   const markRead = useMarkRead();
+  const outbox = useOutbox();
+
+  /**
+   * Server messages plus whatever is still waiting in the outbox, the latter
+   * rendered as pending bubbles. Without this, a queued message would vanish
+   * from the screen at the next poll -- and an agent whose words disappear
+   * types them again.
+   */
+  const listData = useMemo<ChatMessage[]>(() => {
+    const base = messages ?? [];
+    if (!outbox.entries.length) return base;
+    const queued = outbox.entries
+      .filter((entry) => !base.some((m) => m.client_uuid === entry.clientUuid))
+      .map<ChatMessage>((entry) => ({
+        id: `pending-${entry.clientUuid}`,
+        kind: 'TEXT',
+        body: entry.body,
+        attachment: null,
+        from_agent: true,
+        sender_name: 'You',
+        client_uuid: entry.clientUuid,
+        submission: null,
+        read_at: null,
+        created_at: entry.queuedAt,
+      }));
+    return [...base, ...queued];
+  }, [messages, outbox.entries]);
 
   const [draft, setDraft] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -123,21 +152,30 @@ export default function ChatScreen() {
   }, []);
 
   useEffect(() => {
-    if (messages?.length) scrollToEnd();
-  }, [messages?.length, scrollToEnd]);
+    if (listData.length) scrollToEnd();
+  }, [listData.length, scrollToEnd]);
 
   function sendText() {
     const body = draft.trim();
     if (!body) return;
     setDraft('');
     setUploadError(null);
+    const clientUuid = newUuid();
     sendMessage.mutate(
-      { kind: 'TEXT', body, client_uuid: newUuid() },
+      { kind: 'TEXT', body, client_uuid: clientUuid },
       {
-        onError: () => {
-          // Put the text back so the agent does not lose what they typed.
-          setDraft(body);
-          setUploadError('Message not sent. Check your signal and try again.');
+        onError: (err) => {
+          if (err instanceof ApiError && !err.isNetworkError && err.status < 500) {
+            // The server refused this message; the outbox cannot fix that.
+            // Put the text back so the agent does not lose what they typed.
+            setDraft(body);
+            setUploadError(err.message);
+            return;
+          }
+          // No signal: hand the message to the persistent outbox, which
+          // shows it as a pending bubble and delivers it when it can. The
+          // same client_uuid keeps a late-arriving duplicate impossible.
+          void enqueueMessage({ body, tag: 'chat', clientUuid });
         },
       },
     );
@@ -278,10 +316,10 @@ export default function ChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        {messages?.length ? (
+        {listData.length ? (
           <FlatList
             ref={listRef}
-            data={messages}
+            data={listData}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => <ChatBubble message={item} />}
             contentContainerStyle={styles.list}
