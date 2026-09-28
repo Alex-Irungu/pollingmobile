@@ -40,7 +40,7 @@ import {
   setRememberedEmail,
 } from '../api/tokens';
 import {
-  hasLocationPermission,
+  ensureLocationTracking,
   requestLocationPermissions,
   startLocationTracking,
   stopLocationTracking,
@@ -65,14 +65,13 @@ interface AuthValue {
 }
 
 /**
- * Silently starts location reporting if permission was already granted in an
- * earlier session. Never prompts -- prompting belongs to the moments a
- * permission is first requested (sign-in, or explicitly from Profile), not to
- * every app launch.
+ * Starts location reporting on entering a signed-in session: silently when
+ * permission is already granted, with the one-time system prompt when it has
+ * never been asked on this install (see ensureLocationTracking). A denied
+ * permission is left alone -- re-enabling belongs to Profile.
  */
-async function resumeLocationTrackingIfPermitted(): Promise<void> {
-  const granted = await hasLocationPermission();
-  if (granted) startLocationTracking();
+function resumeLocationTrackingIfPermitted(): void {
+  void ensureLocationTracking();
 }
 
 /**

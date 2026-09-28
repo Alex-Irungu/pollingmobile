@@ -88,6 +88,29 @@ export async function hasLocationPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
+/**
+ * Start tracking if permitted, asking first if permission has never been
+ * requested on this install.
+ *
+ * The original design only prompted at password sign-in -- but an agent who
+ * updates the app over a live session, or who signs in by fingerprint, never
+ * passes through that moment, and their permission stays "undetermined"
+ * forever: no prompt, no pings, invisible on the command-centre map. So an
+ * undetermined status is treated as "the ask moment never happened" and this
+ * launch becomes it. A real denial is still respected -- never re-prompted.
+ */
+export async function ensureLocationTracking(): Promise<void> {
+  const { status } = await Location.getForegroundPermissionsAsync();
+  if (status === 'granted') {
+    await startLocationTracking();
+    return;
+  }
+  if (status === 'undetermined') {
+    const granted = await requestLocationPermissions();
+    if (granted) await startLocationTracking();
+  }
+}
+
 let started = false;
 let reportTimer: ReturnType<typeof setInterval> | null = null;
 let resumeSubscription: { remove: () => void } | null = null;
