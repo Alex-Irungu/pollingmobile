@@ -39,7 +39,8 @@ import type {
 } from '../../src/api/types';
 import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
 import { Button } from '../../src/components/Button';
-import { EmptyState, LoadingState } from '../../src/components/ui';
+import { EmptyState, LoadingState, SkeletonList, pressedStyle } from '../../src/components/ui';
+import * as haptics from '../../src/services/haptics';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
 const INBOX_POLL_MS = 20_000;
@@ -55,6 +56,25 @@ function newUuid(): string {
     const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
     return value.toString(16);
   });
+}
+
+/** Deterministic avatar colour from the agent's name, so a long inbox is
+ * scannable by colour before it is readable by text. */
+const AVATAR_PALETTE = [
+  { bg: colors.greenSurface, fg: colors.green },
+  { bg: colors.infoSurface, fg: colors.info },
+  { bg: colors.goldSurface, fg: colors.gold },
+  { bg: colors.verifiedSurface, fg: colors.verified },
+  { bg: colors.pendingSurface, fg: colors.pending },
+  { bg: colors.flaggedSurface, fg: colors.flagged },
+];
+
+function avatarColour(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
 }
 
 function fmtWhen(iso: string | null): string {
@@ -101,10 +121,12 @@ function ThreadView({
         client_uuid: newUuid(),
       }),
     onSuccess: () => {
+      haptics.success();
       setDraft('');
       queryClient.invalidateQueries({ queryKey: ['admin', 'thread', conversation.id] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
     },
+    onError: () => haptics.warn(),
   });
 
   const messages = thread.data?.results ?? [];
@@ -259,6 +281,7 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
         group_ids: audience === 'GROUPS' ? [...groupIds] : undefined,
       }),
     onSuccess: (result) => {
+      haptics.success();
       queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
       onClose();
       const lines = [`Delivered in-app to ${result.delivered_in_app} agent${result.delivered_in_app === 1 ? '' : 's'}.`];
@@ -269,7 +292,10 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
       }
       Alert.alert('Message sent', lines.join('\n\n'));
     },
-    onError: (err: Error) => Alert.alert('Could not send', err.message),
+    onError: (err: Error) => {
+      haptics.warn();
+      Alert.alert('Could not send', err.message);
+    },
   });
 
   function toggle(set: Set<string>, id: string, apply: (next: Set<string>) => void) {
@@ -523,7 +549,7 @@ export default function InboxScreen() {
       </View>
 
       {inbox.isPending ? (
-        <LoadingState message="Loading inbox…" />
+        <SkeletonList rows={7} />
       ) : (
         <FlatList
           data={conversations}
@@ -548,12 +574,23 @@ export default function InboxScreen() {
               icon={
                 <Ionicons name="chatbubbles-outline" size={40} color={colors.inkFaint} />
               }
+              action={
+                needle ? undefined : { label: 'New message', onPress: () => setComposing(true) }
+              }
             />
           }
-          renderItem={({ item }) => (
-            <Pressable style={styles.convRow} onPress={() => setOpenThread(item)}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
+          renderItem={({ item }) => {
+            const palette = avatarColour(item.agent_name);
+            return (
+            <Pressable
+              style={pressedStyle(styles.convRow)}
+              onPress={() => {
+                haptics.tap();
+                setOpenThread(item);
+              }}
+            >
+              <View style={[styles.avatar, { backgroundColor: palette.bg }]}>
+                <Text style={[styles.avatarText, { color: palette.fg }]}>
                   {item.agent_name
                     .split(' ')
                     .slice(0, 2)
@@ -589,7 +626,8 @@ export default function InboxScreen() {
                 </View>
               ) : null}
             </Pressable>
-          )}
+            );
+          }}
         />
       )}
 

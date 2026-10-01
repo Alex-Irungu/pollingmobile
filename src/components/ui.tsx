@@ -5,18 +5,26 @@
  * lines, and they are almost always imported together.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   View,
+  type PressableStateCallbackType,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import {
   HIT_SLOP,
@@ -211,18 +219,81 @@ export function EmptyState({
   title,
   message,
   icon,
+  action,
 }: {
   title: string;
   message: string;
   icon?: React.ReactNode;
+  /** The fix, right where the problem is stated — not a hint to go find it. */
+  action?: { label: string; onPress: () => void };
 }) {
   return (
     <Animated.View entering={FadeIn.duration(260)} style={styles.centred}>
       {icon ? <View style={styles.emptyIcon}>{icon}</View> : null}
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.centredText}>{message}</Text>
+      {action ? (
+        <Pressable
+          onPress={action.onPress}
+          style={pressedStyle(styles.emptyAction)}
+          accessibilityRole="button"
+        >
+          <Text style={styles.emptyActionText}>{action.label}</Text>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
+}
+
+// --------------------------------------------------------------------------- //
+// Skeletons
+// --------------------------------------------------------------------------- //
+
+/** One pulsing grey block, shaped by the caller. The pulse runs on the UI
+ * thread, so it stays smooth while the JS thread parses the real response. */
+export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
+  const pulse = useSharedValue(0.45);
+
+  useEffect(() => {
+    pulse.value = withRepeat(withTiming(1, { duration: 700 }), -1, true);
+  }, [pulse]);
+
+  const animated = useAnimatedStyle(() => ({ opacity: pulse.value }));
+
+  return <Animated.View style={[styles.skeleton, animated, style]} />;
+}
+
+/** A column of card-shaped placeholders, matching the lists they stand in
+ * for. Perceived speed: the screen's shape arrives before its data. */
+export function SkeletonList({ rows = 5 }: { rows?: number }) {
+  return (
+    <View style={styles.skeletonList}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <View key={i} style={styles.skeletonCard}>
+          <Skeleton style={styles.skeletonAvatar} />
+          <View style={styles.skeletonLines}>
+            <Skeleton style={styles.skeletonLineWide} />
+            <Skeleton style={styles.skeletonLineNarrow} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Press feedback
+// --------------------------------------------------------------------------- //
+
+/**
+ * Wrap a Pressable's style so every tap is visibly acknowledged. Usage:
+ * `style={pressedStyle(styles.row)}`. Kept to opacity: a scale transform on
+ * list rows causes visible reflow jitter on low-end phones.
+ */
+export function pressedStyle(
+  ...base: Array<StyleProp<ViewStyle>>
+): (state: PressableStateCallbackType) => StyleProp<ViewStyle> {
+  return ({ pressed }) => [...base, pressed && { opacity: 0.65 }];
 }
 
 // --------------------------------------------------------------------------- //
@@ -315,6 +386,35 @@ const styles = StyleSheet.create({
   },
   emptyIcon: { marginBottom: spacing.xs },
   emptyTitle: { ...typography.heading, color: colors.ink, textAlign: 'center' },
+  emptyAction: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.green,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  emptyActionText: { ...typography.bodyStrong, fontSize: 14, color: colors.white },
+  skeleton: {
+    backgroundColor: colors.line,
+    borderRadius: radius.sm,
+  },
+  skeletonList: { gap: spacing.sm, padding: spacing.base },
+  skeletonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: spacing.base,
+  },
+  skeletonAvatar: { width: 42, height: 42, borderRadius: 21 },
+  skeletonLines: { flex: 1, gap: spacing.sm },
+  skeletonLineWide: { height: 14, width: '72%' },
+  skeletonLineNarrow: { height: 11, width: '45%' },
   title: { ...typography.title, color: colors.ink },
   subtitle: { ...typography.body, color: colors.inkMuted, lineHeight: 21 },
 });

@@ -27,7 +27,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as api from '../../src/api/endpoints';
 import type { StructureItem } from '../../src/api/types';
 import { AdminHeader } from '../../src/components/AdminHeader';
-import { EmptyState, LoadingState, formatNumber } from '../../src/components/ui';
+import {
+  EmptyState,
+  SkeletonList,
+  formatNumber,
+  pressedStyle,
+} from '../../src/components/ui';
+import * as haptics from '../../src/services/haptics';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
 type Level = 'county' | 'constituency' | 'ward' | 'centre';
@@ -109,7 +115,7 @@ export default function StructureScreen() {
       </View>
 
       {query.isPending ? (
-        <LoadingState message="Loading structure…" />
+        <SkeletonList rows={8} />
       ) : items.length === 0 ? (
         <EmptyState
           title={needle ? 'Nothing matches' : 'No data'}
@@ -133,8 +139,11 @@ export default function StructureScreen() {
             const drillable = !!NEXT_LEVEL[current.level];
             return (
               <Pressable
-                style={styles.row}
-                onPress={() => drillInto(item)}
+                style={drillable ? pressedStyle(styles.row) : styles.row}
+                onPress={() => {
+                  haptics.tap();
+                  drillInto(item);
+                }}
                 disabled={!drillable}
               >
                 <View style={styles.rowBody}>

@@ -34,6 +34,7 @@ import type { AdminEvent, AdminEventInput } from '../../src/api/types';
 import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
 import { Button } from '../../src/components/Button';
 import { Banner, Card, EmptyState, LoadingState, SectionLabel } from '../../src/components/ui';
+import * as haptics from '../../src/services/haptics';
 import { splitMs, useNow } from '../../src/hooks/useNow';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
@@ -314,10 +315,14 @@ function EventForm({
     mutationFn: (payload: AdminEventInput) =>
       editing ? api.updateAdminEvent(editing.id, payload) : api.createAdminEvent(payload),
     onSuccess: () => {
+      haptics.success();
       queryClient.invalidateQueries({ queryKey: eventsQueryKey });
       onClose();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      haptics.warn();
+      setError(err.message);
+    },
   });
 
   function submit() {
@@ -608,8 +613,12 @@ export default function EventsScreen() {
         {isEmpty ? (
           <EmptyState
             title="Nothing scheduled"
-            message="Tap + to record the campaign's first event."
+            message="Record the campaign's first rally, meeting or baraza."
             icon={<Ionicons name="calendar-outline" size={40} color={colors.inkFaint} />}
+            action={{
+              label: 'Record an event',
+              onPress: () => setForm({ open: true, editing: null }),
+            }}
           />
         ) : (
           <>

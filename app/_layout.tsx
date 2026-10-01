@@ -19,6 +19,7 @@ import {
 } from '../src/api/tokens';
 import { BiometricSetupSheet } from '../src/components/BiometricSetupSheet';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { OfflineBanner } from '../src/components/OfflineBanner';
 import { getBiometricCapability } from '../src/services/biometrics';
 import { initMonitoring, wrapRoot } from '../src/services/monitoring';
 import { AuthProvider, useAuth } from '../src/store/auth';
@@ -124,6 +125,9 @@ function NavigationGate() {
         <Stack.Screen name="login" />
         <Stack.Screen name="(app)" />
       </Stack>
+
+      {/* Slides in under the status bar whenever connectivity drops. */}
+      <OfflineBanner />
 
       {/* Overlays the fully-mounted app so the navigator is never torn down —
           removing it from the tree caused useRouter/useSegments to lose

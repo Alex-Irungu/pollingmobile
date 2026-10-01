@@ -31,7 +31,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as api from '../../src/api/endpoints';
 import type { AgentListItem } from '../../src/api/types';
 import { AdminHeader } from '../../src/components/AdminHeader';
-import { EmptyState, LoadingState, formatNumber } from '../../src/components/ui';
+import {
+  EmptyState,
+  SkeletonList,
+  formatNumber,
+  pressedStyle,
+} from '../../src/components/ui';
+import * as haptics from '../../src/services/haptics';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -115,7 +121,7 @@ export default function AgentsScreen() {
           return (
             <Pressable
               key={filter.value}
-              style={[styles.filterChip, active && styles.filterChipActive]}
+              style={pressedStyle(styles.filterChip, active && styles.filterChipActive)}
               onPress={() => setStatusFilter(filter.value)}
             >
               <Text style={[styles.filterText, active && styles.filterTextActive]}>
@@ -127,7 +133,7 @@ export default function AgentsScreen() {
       </View>
 
       {query.isPending ? (
-        <LoadingState message="Loading agents…" />
+        <SkeletonList rows={8} />
       ) : (
         <FlatList
           data={filtered}
@@ -185,8 +191,11 @@ export default function AgentsScreen() {
                 </View>
                 {item.phone_number ? (
                   <Pressable
-                    style={styles.callButton}
-                    onPress={() => call(item.phone_number)}
+                    style={pressedStyle(styles.callButton)}
+                    onPress={() => {
+                      haptics.tap();
+                      call(item.phone_number);
+                    }}
                     accessibilityLabel={`Call ${item.full_name}`}
                   >
                     <Ionicons name="call" size={20} color={colors.white} />

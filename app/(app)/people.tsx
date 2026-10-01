@@ -43,8 +43,11 @@ import {
   EmptyState,
   LoadingState,
   SectionLabel,
+  SkeletonList,
   formatNumber,
+  pressedStyle,
 } from '../../src/components/ui';
+import * as haptics from '../../src/services/haptics';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
 const peopleKey = ['admin', 'people'] as const;
@@ -135,11 +138,15 @@ function PersonForm({
       return editing ? api.updatePerson(editing.id, payload) : api.createPerson(payload);
     },
     onSuccess: () => {
+      haptics.success();
       queryClient.invalidateQueries({ queryKey: peopleKey });
       queryClient.invalidateQueries({ queryKey: peopleStatsKey });
       onClose();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      haptics.warn();
+      setError(err.message);
+    },
   });
 
   return (
@@ -263,11 +270,15 @@ function MemberForm({ group, onClose }: { group: SpecialGroupItem; onClose: () =
         polling_centre: centre?.id ?? null,
       }),
     onSuccess: () => {
+      haptics.success();
       queryClient.invalidateQueries({ queryKey: ['admin', 'groupMembers', group.id] });
       queryClient.invalidateQueries({ queryKey: groupsKey });
       onClose();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      haptics.warn();
+      setError(err.message);
+    },
   });
 
   return (
@@ -382,7 +393,7 @@ function GroupDetail({ group, onClose }: { group: SpecialGroupItem; onClose: () 
         </View>
 
         {members.isPending ? (
-          <LoadingState message="Loading members…" />
+          <SkeletonList rows={6} />
         ) : (
           <FlatList
             data={members.data ?? []}
@@ -410,8 +421,11 @@ function GroupDetail({ group, onClose }: { group: SpecialGroupItem; onClose: () 
                   </View>
                   {item.phone_number ? (
                     <Pressable
-                      style={styles.callButton}
-                      onPress={() => call(item.phone_number)}
+                      style={pressedStyle(styles.callButton)}
+                      onPress={() => {
+                        haptics.tap();
+                        call(item.phone_number);
+                      }}
                       accessibilityLabel={`Call ${item.full_name}`}
                     >
                       <Ionicons name="call" size={18} color={colors.green} />
@@ -572,7 +586,7 @@ export default function PeopleScreen() {
           </View>
 
           {people.isPending ? (
-            <LoadingState message="Loading people…" />
+            <SkeletonList rows={6} />
           ) : (
             <FlatList
               data={filteredPeople}
@@ -587,10 +601,18 @@ export default function PeopleScreen() {
                   title={search ? 'Nobody matches' : 'No people yet'}
                   message={
                     search
-                      ? 'Try a different name or number.'
-                      : 'Register the first supporter with the + button.'
+                      ? 'Try a different name, number or centre.'
+                      : 'Record the first supporter you meet on the ground.'
                   }
                   icon={<Ionicons name="people-outline" size={40} color={colors.inkFaint} />}
+                  action={
+                    search
+                      ? undefined
+                      : {
+                          label: 'Register a supporter',
+                          onPress: () => setPersonForm({ open: true, editing: null }),
+                        }
+                  }
                 />
               }
               renderItem={({ item }) => (
@@ -618,8 +640,11 @@ export default function PeopleScreen() {
                       </View>
                       {item.phone_number ? (
                         <Pressable
-                          style={styles.callButton}
-                          onPress={() => call(item.phone_number)}
+                          style={pressedStyle(styles.callButton)}
+                          onPress={() => {
+                            haptics.tap();
+                            call(item.phone_number);
+                          }}
                           accessibilityLabel={`Call ${item.full_name}`}
                         >
                           <Ionicons name="call" size={18} color={colors.green} />
@@ -633,7 +658,7 @@ export default function PeopleScreen() {
           )}
         </>
       ) : groups.isPending ? (
-        <LoadingState message="Loading groups…" />
+        <SkeletonList rows={6} />
       ) : (
         <FlatList
           data={groups.data ?? []}

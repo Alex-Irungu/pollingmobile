@@ -25,9 +25,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
 import type { AdminEvent } from '../../src/api/types';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+
 import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
+import { AnimatedNumber } from '../../src/components/AnimatedNumber';
 import { ElectionCountdown } from '../../src/components/ElectionCountdown';
-import { Card, SectionLabel, formatNumber } from '../../src/components/ui';
+import { Card, SectionLabel, formatNumber, pressedStyle } from '../../src/components/ui';
 import { splitMs, useNow } from '../../src/hooks/useNow';
 import { useMe } from '../../src/hooks/useMe';
 import { useAuth } from '../../src/store/auth';
@@ -214,22 +217,43 @@ export default function AdminDashboard() {
         {/* Ground network stats */}
         <SectionLabel>Ground network</SectionLabel>
         <View style={styles.statsRow}>
-          <Pressable style={styles.statCard} onPress={() => router.navigate('/(app)/people')}>
-            <Text style={styles.statValue}>
-              {peopleStats.data ? formatNumber(peopleStats.data.total) : '--'}
-            </Text>
+          <Pressable
+            style={pressedStyle(styles.statCard)}
+            onPress={() => router.navigate('/(app)/people')}
+          >
+            {peopleStats.data ? (
+              <AnimatedNumber value={peopleStats.data.total} style={styles.statValue} />
+            ) : (
+              <Text style={styles.statValue}>--</Text>
+            )}
             <Text style={styles.statLabel}>My people</Text>
           </Pressable>
-          <Pressable style={styles.statCard} onPress={() => router.navigate('/(app)/people')}>
-            <Text style={[styles.statValue, { color: colors.verified }]}>
-              {peopleStats.data ? formatNumber(peopleStats.data.assigned) : '--'}
-            </Text>
+          <Pressable
+            style={pressedStyle(styles.statCard)}
+            onPress={() => router.navigate('/(app)/people')}
+          >
+            {peopleStats.data ? (
+              <AnimatedNumber
+                value={peopleStats.data.assigned}
+                style={[styles.statValue, { color: colors.verified }]}
+              />
+            ) : (
+              <Text style={[styles.statValue, { color: colors.verified }]}>--</Text>
+            )}
             <Text style={styles.statLabel}>At a centre</Text>
           </Pressable>
-          <Pressable style={styles.statCard} onPress={() => router.navigate('/(app)/events')}>
-            <Text style={[styles.statValue, { color: colors.gold }]}>
-              {events.data ? formatNumber(upcomingCount) : '--'}
-            </Text>
+          <Pressable
+            style={pressedStyle(styles.statCard)}
+            onPress={() => router.navigate('/(app)/events')}
+          >
+            {events.data ? (
+              <AnimatedNumber
+                value={upcomingCount}
+                style={[styles.statValue, { color: colors.gold }]}
+              />
+            ) : (
+              <Text style={[styles.statValue, { color: colors.gold }]}>--</Text>
+            )}
             <Text style={styles.statLabel}>Upcoming events</Text>
           </Pressable>
         </View>
@@ -246,18 +270,23 @@ export default function AdminDashboard() {
               ['tally', 'stats-chart', 'Watch the tally', 'Live figures, 30s refresh'],
               ['structure', 'git-branch', 'Browse structure', 'Find coverage gaps'],
             ] as const
-          ).map(([route, icon, label, hint]) => (
-            <Pressable
+          ).map(([route, icon, label, hint], i) => (
+            <Animated.View
               key={route}
-              style={styles.actionCard}
-              onPress={() => router.navigate(`/(app)/${route}`)}
+              entering={FadeInDown.delay(Math.min(i, 5) * 50).duration(240)}
+              style={styles.actionCell}
             >
-              <View style={styles.actionIcon}>
-                <Ionicons name={icon} size={20} color={colors.green} />
-              </View>
-              <Text style={styles.actionLabel}>{label}</Text>
-              <Text style={styles.actionHint}>{hint}</Text>
-            </Pressable>
+              <Pressable
+                style={pressedStyle(styles.actionCard)}
+                onPress={() => router.navigate(`/(app)/${route}`)}
+              >
+                <View style={styles.actionIcon}>
+                  <Ionicons name={icon} size={20} color={colors.green} />
+                </View>
+                <Text style={styles.actionLabel}>{label}</Text>
+                <Text style={styles.actionHint}>{hint}</Text>
+              </Pressable>
+            </Animated.View>
           ))}
         </View>
 
@@ -315,9 +344,9 @@ const styles = StyleSheet.create({
   statLabel: { ...typography.caption, fontSize: 11, color: colors.inkMuted },
 
   actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  actionCell: { width: '48%', flexGrow: 1 },
   actionCard: {
-    width: '48%',
-    flexGrow: 1,
+    flex: 1,
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,

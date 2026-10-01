@@ -25,16 +25,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
 import { AdminHeader } from '../../src/components/AdminHeader';
+import { AnimatedNumber } from '../../src/components/AnimatedNumber';
 import { LiveTallyCard } from '../../src/components/LiveTallyCard';
 import {
   Banner,
   Card,
   EmptyState,
-  LoadingState,
   SectionLabel,
+  SkeletonList,
   formatNumber,
+  pressedStyle,
 } from '../../src/components/ui';
 import { useLiveTally } from '../../src/hooks/useLiveTally';
+import { useNow } from '../../src/hooks/useNow';
 import { colors, radius, spacing, typography } from '../../src/theme';
 
 export default function TallyScreen() {
@@ -55,7 +58,30 @@ export default function TallyScreen() {
 
   const tally = useLiveTally(selectedId);
 
-  if (races.isPending) return <LoadingState message="Loading races…" />;
+  // "Updated 40s ago": a figure without an age is a figure nobody trusts on
+  // election night. dataUpdatedAt is react-query's timestamp of the last
+  // successful fetch; useNow keeps the label ticking.
+  const now = useNow();
+  const ageSeconds = tally.dataUpdatedAt
+    ? Math.max(0, Math.round((now - tally.dataUpdatedAt) / 1000))
+    : null;
+  const updatedLabel =
+    ageSeconds === null
+      ? null
+      : ageSeconds < 5
+        ? 'Updated just now'
+        : ageSeconds < 60
+          ? `Updated ${ageSeconds}s ago`
+          : `Updated ${Math.floor(ageSeconds / 60)}m ago`;
+
+  if (races.isPending) {
+    return (
+      <View style={styles.screen}>
+        <AdminHeader kicker="LIVE RESULTS" title="Tally" />
+        <SkeletonList rows={4} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -92,7 +118,7 @@ export default function TallyScreen() {
               return (
                 <Pressable
                   key={race.id}
-                  style={[styles.raceChip, active && styles.raceChipActive]}
+                  style={pressedStyle(styles.raceChip, active && styles.raceChipActive)}
                   onPress={() => setRaceId(race.id)}
                 >
                   <Text
@@ -113,7 +139,7 @@ export default function TallyScreen() {
           </ScrollView>
 
           {tally.isPending ? (
-            <LoadingState message="Fetching figures…" />
+            <SkeletonList rows={4} />
           ) : tally.isError ? (
             <Banner
               tone="warning"
@@ -122,15 +148,20 @@ export default function TallyScreen() {
             />
           ) : tally.data ? (
             <>
+              {updatedLabel ? (
+                <Text style={styles.updatedLabel}>{updatedLabel}</Text>
+              ) : null}
+
               <LiveTallyCard tally={tally.data} />
 
               <SectionLabel>Reporting</SectionLabel>
               <Card>
                 <View style={styles.statRow}>
                   <View style={styles.stat}>
-                    <Text style={styles.statValue}>
-                      {formatNumber(tally.data.summary.stations_reporting)}
-                    </Text>
+                    <AnimatedNumber
+                      value={tally.data.summary.stations_reporting}
+                      style={styles.statValue}
+                    />
                     <Text style={styles.statLabel}>Stations in</Text>
                   </View>
                   <View style={styles.stat}>
@@ -149,21 +180,24 @@ export default function TallyScreen() {
                 <View style={styles.divider} />
                 <View style={styles.statRow}>
                   <View style={styles.stat}>
-                    <Text style={styles.statValueSmall}>
-                      {formatNumber(tally.data.summary.total_valid_votes)}
-                    </Text>
+                    <AnimatedNumber
+                      value={tally.data.summary.total_valid_votes}
+                      style={styles.statValueSmall}
+                    />
                     <Text style={styles.statLabel}>Valid votes</Text>
                   </View>
                   <View style={styles.stat}>
-                    <Text style={styles.statValueSmall}>
-                      {formatNumber(tally.data.summary.total_rejected_votes)}
-                    </Text>
+                    <AnimatedNumber
+                      value={tally.data.summary.total_rejected_votes}
+                      style={styles.statValueSmall}
+                    />
                     <Text style={styles.statLabel}>Rejected</Text>
                   </View>
                   <View style={styles.stat}>
-                    <Text style={styles.statValueSmall}>
-                      {formatNumber(tally.data.summary.total_registered_voters)}
-                    </Text>
+                    <AnimatedNumber
+                      value={tally.data.summary.total_registered_voters}
+                      style={styles.statValueSmall}
+                    />
                     <Text style={styles.statLabel}>Registered</Text>
                   </View>
                 </View>
@@ -212,6 +246,12 @@ const styles = StyleSheet.create({
   statValueSmall: { ...typography.numeric, fontSize: 16, color: colors.ink },
   statLabel: { ...typography.caption, fontSize: 11, color: colors.inkMuted },
   divider: { height: 1, backgroundColor: colors.line, marginVertical: spacing.md },
+  updatedLabel: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.inkFaint,
+    textAlign: 'right',
+  },
   footnote: {
     ...typography.caption,
     fontSize: 11,
