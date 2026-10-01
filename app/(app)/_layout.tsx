@@ -252,6 +252,11 @@ export default function AppLayout() {
           ),
         }}
       />
+      {/* Admin destinations reached from the Dashboard, not the tab bar:
+          five tabs is already the ceiling for thumb reach. */}
+      <Tabs.Screen name="agents" options={{ href: null }} />
+      <Tabs.Screen name="inbox" options={{ href: null }} />
+
       <Tabs.Screen
         name="history"
         options={{

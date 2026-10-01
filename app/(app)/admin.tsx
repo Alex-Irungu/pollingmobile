@@ -246,6 +246,8 @@ export default function AdminDashboard() {
             [
               ['people', 'person-add', 'Register a supporter', 'Name, phone, polling centre'],
               ['events', 'calendar', 'Record an event', 'With key contacts to call'],
+              ['agents', 'call', 'Agents directory', 'Find and call any agent'],
+              ['inbox', 'chatbubbles', 'Messages', 'Reply to agents in the field'],
               ['tally', 'stats-chart', 'Watch the tally', 'Live figures, 30s refresh'],
               ['structure', 'git-branch', 'Browse structure', 'Find coverage gaps'],
             ] as const

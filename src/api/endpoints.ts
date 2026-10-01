@@ -13,6 +13,7 @@ import { apiRequest } from './client';
 import type {
   AdminEvent,
   AdminEventInput,
+  AgentListItem,
   AgentPosting,
   Attachment,
   ChatMessage,
@@ -20,6 +21,7 @@ import type {
   EventSaveResult,
   GeoUnit,
   GroupMemberItem,
+  InboxConversation,
   LiveTally,
   LoginResponse,
   MessageListResponse,
@@ -30,6 +32,7 @@ import type {
   SpecialGroupItem,
   StructureResponse,
   SubmissionHistoryResponse,
+  ThreadResponse,
   SubmissionResponse,
   SubmitResultPayload,
   UserMe,
@@ -361,4 +364,36 @@ export function createGroupMember(payload: {
 
 export function deleteGroupMember(id: string) {
   return apiRequest<void>(`/group-members/${id}/`, { method: 'DELETE' });
+}
+
+// ---- Agents directory ---- //
+
+/** Every agent, unpaginated. The server searches name/phone/email; location
+ * and station search happens client-side over the `location` display string,
+ * so one fetch serves every keystroke without a network round trip. */
+export function fetchAgents() {
+  return apiRequest<AgentListItem[]>('/agents/');
+}
+
+// ---- Command-centre messaging ---- //
+
+export function fetchInbox() {
+  return apiRequest<{ count: number; results: InboxConversation[] }>(
+    '/messages/inbox/',
+  );
+}
+
+/** Opening a thread also marks the agent's messages read, server-side. */
+export function fetchThread(conversationId: string) {
+  return apiRequest<ThreadResponse>(`/messages/inbox/${conversationId}/`);
+}
+
+export function sendThreadMessage(
+  conversationId: string,
+  payload: { body: string; client_uuid: string },
+) {
+  return apiRequest<ChatMessage>(`/messages/inbox/${conversationId}/`, {
+    method: 'POST',
+    body: { kind: 'TEXT', ...payload },
+  });
 }

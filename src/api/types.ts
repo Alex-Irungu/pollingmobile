@@ -369,3 +369,36 @@ export interface StructureResponse {
   classification?: string;
   items: StructureItem[];
 }
+
+/** One row of the agents directory. `location` is the backend's display
+ * string -- station, ward or constituency depending on the agent's level --
+ * which is exactly what the directory searches over. */
+export interface AgentListItem {
+  id: string;
+  full_name: string;
+  phone_number: string;
+  level: string;
+  location: string | null;
+  status: string;
+  supervisor_name: string | null;
+  user_email: string;
+  created_at: string;
+}
+
+/** One agent thread in the command-centre inbox. */
+export interface InboxConversation {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  agent_phone: string;
+  polling_station: string | null;
+  last_message_at: string | null;
+  last_message_preview: string;
+  unread: number;
+}
+
+export interface ThreadResponse {
+  agent_name: string;
+  count: number;
+  results: ChatMessage[];
+}
