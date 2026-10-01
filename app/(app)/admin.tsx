@@ -25,11 +25,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
 import type { AdminEvent } from '../../src/api/types';
+import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
+import { ElectionCountdown } from '../../src/components/ElectionCountdown';
 import { Card, SectionLabel, formatNumber } from '../../src/components/ui';
 import { splitMs, useNow } from '../../src/hooks/useNow';
 import { useMe } from '../../src/hooks/useMe';
 import { useAuth } from '../../src/store/auth';
-import { HIT_SLOP, colors, radius, spacing, typography } from '../../src/theme';
+import { colors, radius, spacing, typography } from '../../src/theme';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -146,7 +148,12 @@ export default function AdminDashboard() {
   const firstName = fullName?.split(' ')[0] ?? 'there';
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
+      <AdminHeader
+        kicker="COMMAND CENTRE"
+        title={`Hello, ${firstName}`}
+        right={<HeaderAction icon="log-out-outline" label="Logout" onPress={confirmSignOut} />}
+      />
       <ScrollView
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + spacing.xxl }]}
         refreshControl={
@@ -160,20 +167,8 @@ export default function AdminDashboard() {
           />
         }
       >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.kicker}>COMMAND CENTRE</Text>
-            <Text style={styles.title}>Hello, {firstName}</Text>
-          </View>
-          <Pressable
-            onPress={confirmSignOut}
-            hitSlop={HIT_SLOP}
-            style={styles.signOut}
-            accessibilityLabel="Sign out"
-          >
-            <Ionicons name="log-out-outline" size={22} color={colors.inkMuted} />
-          </Pressable>
-        </View>
+        {/* The campaign's clock: polls open 06:00, 10 Aug 2027 */}
+        <ElectionCountdown />
 
         {/* Next event spotlight */}
         {nextEvent ? (
@@ -266,10 +261,6 @@ export default function AdminDashboard() {
           ))}
         </View>
 
-        <Text style={styles.footnote}>
-          Office work — CSV imports, user accounts, verification — lives in the web
-          Command Centre.
-        </Text>
       </ScrollView>
     </View>
   );
@@ -278,24 +269,6 @@ export default function AdminDashboard() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   body: { padding: spacing.base, gap: spacing.md },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  kicker: { ...typography.micro, color: colors.inkFaint },
-  title: { ...typography.title, color: colors.ink },
-  signOut: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   nextCard: { gap: spacing.sm, borderColor: colors.greenLight, borderWidth: 1 },
   nextTitle: { ...typography.heading, color: colors.ink },
@@ -363,11 +336,4 @@ const styles = StyleSheet.create({
   },
   actionLabel: { ...typography.bodyStrong, fontSize: 14, color: colors.ink },
   actionHint: { ...typography.caption, fontSize: 11, color: colors.inkFaint },
-  footnote: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.inkFaint,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-  },
 });

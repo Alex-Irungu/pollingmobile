@@ -31,6 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
 import type { AdminEvent, AdminEventInput } from '../../src/api/types';
+import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
 import { Button } from '../../src/components/Button';
 import { Banner, Card, EmptyState, LoadingState, SectionLabel } from '../../src/components/ui';
 import { splitMs, useNow } from '../../src/hooks/useNow';
@@ -581,20 +582,18 @@ export default function EventsScreen() {
   const isEmpty = sections.current.length === 0 && sections.past.length === 0;
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.screenHeader}>
-        <View>
-          <Text style={styles.screenKicker}>CAMPAIGN CALENDAR</Text>
-          <Text style={styles.screenTitle}>Events</Text>
-        </View>
-        <Pressable
-          style={styles.addButton}
-          onPress={() => setForm({ open: true, editing: null })}
-          accessibilityLabel="Add event"
-        >
-          <Ionicons name="add" size={26} color={colors.white} />
-        </Pressable>
-      </View>
+    <View style={styles.screen}>
+      <AdminHeader
+        kicker="CAMPAIGN CALENDAR"
+        title="Events"
+        right={
+          <HeaderAction
+            icon="add"
+            label="Add"
+            onPress={() => setForm({ open: true, editing: null })}
+          />
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.xxl }]}
@@ -662,24 +661,11 @@ export default function EventsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
-  screenHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  list: {
     paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.md,
+    gap: spacing.lg,
   },
-  screenKicker: { ...typography.micro, color: colors.inkFaint },
-  screenTitle: { ...typography.title, color: colors.ink },
-  addButton: {
-    width: MIN_TOUCH,
-    height: MIN_TOUCH,
-    borderRadius: radius.md,
-    backgroundColor: colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  list: { paddingHorizontal: spacing.base, gap: spacing.lg },
   daySection: { gap: spacing.sm },
 
   eventCard: { gap: spacing.sm, marginBottom: spacing.sm },

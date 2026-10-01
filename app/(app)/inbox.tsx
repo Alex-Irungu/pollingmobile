@@ -16,6 +16,7 @@ import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -30,7 +31,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
-import type { ChatMessage, InboxConversation } from '../../src/api/types';
+import type {
+  AgentListItem,
+  ChatMessage,
+  InboxConversation,
+  SpecialGroupItem,
+} from '../../src/api/types';
+import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
+import { Button } from '../../src/components/Button';
 import { EmptyState, LoadingState } from '../../src/components/ui';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
@@ -206,6 +214,267 @@ function ThreadView({
 }
 
 // --------------------------------------------------------------------------- //
+// Broadcast composer: one message to many, same audiences as the web
+// --------------------------------------------------------------------------- //
+
+const BROADCAST_MAX = 1000;
+
+type Audience = 'ALL_AGENTS' | 'AGENTS' | 'GROUPS';
+
+const AUDIENCES: Array<{ value: Audience; label: string; hint: string }> = [
+  { value: 'ALL_AGENTS', label: 'All agents', hint: 'Every active agent in the field' },
+  { value: 'AGENTS', label: 'Specific agents', hint: 'Pick who should get it' },
+  { value: 'GROUPS', label: 'Special groups', hint: 'Boda bodas, women\u2019s groups\u2026' },
+];
+
+function BroadcastComposer({ onClose }: { onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+
+  const [body, setBody] = useState('');
+  const [audience, setAudience] = useState<Audience>('ALL_AGENTS');
+  const [agentIds, setAgentIds] = useState<Set<string>>(new Set());
+  const [groupIds, setGroupIds] = useState<Set<string>>(new Set());
+  const [pickerSearch, setPickerSearch] = useState('');
+
+  const agents = useQuery({
+    queryKey: ['admin', 'agents'],
+    queryFn: api.fetchAgents,
+    staleTime: 60_000,
+    enabled: audience === 'AGENTS',
+  });
+  const groups = useQuery({
+    queryKey: ['admin', 'groups'],
+    queryFn: () => api.fetchGroups(),
+    staleTime: 60_000,
+    enabled: audience === 'GROUPS',
+  });
+
+  const send = useMutation({
+    mutationFn: () =>
+      api.sendBroadcast({
+        body: body.trim(),
+        audience,
+        agent_ids: audience === 'AGENTS' ? [...agentIds] : undefined,
+        group_ids: audience === 'GROUPS' ? [...groupIds] : undefined,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
+      onClose();
+      const lines = [`Delivered in-app to ${result.delivered_in_app} agent${result.delivered_in_app === 1 ? '' : 's'}.`];
+      if (result.sms_pending > 0) {
+        lines.push(
+          `${result.sms_pending} group member${result.sms_pending === 1 ? ' has' : 's have'} no app account \u2014 reachable by SMS once the SMS gateway is connected.`,
+        );
+      }
+      Alert.alert('Message sent', lines.join('\n\n'));
+    },
+    onError: (err: Error) => Alert.alert('Could not send', err.message),
+  });
+
+  function toggle(set: Set<string>, id: string, apply: (next: Set<string>) => void) {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    apply(next);
+  }
+
+  // Only active agents can receive a broadcast; showing the rest would
+  // promise delivery the backend will not make.
+  const needle = pickerSearch.trim().toLowerCase();
+  const pickableAgents = (agents.data ?? []).filter(
+    (a) =>
+      a.status === 'ACTIVE' &&
+      (!needle ||
+        a.full_name.toLowerCase().includes(needle) ||
+        a.phone_number.includes(needle) ||
+        (a.location ?? '').toLowerCase().includes(needle)),
+  );
+  const pickableGroups = (groups.data ?? []).filter(
+    (g) => !needle || g.name.toLowerCase().includes(needle),
+  );
+
+  const recipientsChosen =
+    audience === 'ALL_AGENTS' ||
+    (audience === 'AGENTS' && agentIds.size > 0) ||
+    (audience === 'GROUPS' && groupIds.size > 0);
+  const canSend = body.trim().length > 0 && recipientsChosen && !send.isPending;
+
+  const selectionSummary =
+    audience === 'ALL_AGENTS'
+      ? 'Goes to every active agent'
+      : audience === 'AGENTS'
+        ? `${agentIds.size} agent${agentIds.size === 1 ? '' : 's'} selected`
+        : `${groupIds.size} group${groupIds.size === 1 ? '' : 's'} selected`;
+
+  const header = (
+    <View style={styles.composerTop}>
+      <Text style={styles.fieldLabel}>Message</Text>
+      <TextInput
+        style={styles.bodyInput}
+        value={body}
+        onChangeText={(text) => setBody(text.slice(0, BROADCAST_MAX))}
+        placeholder="Type the message every recipient will see…"
+        placeholderTextColor={colors.inkFaint}
+        multiline
+      />
+      <Text style={styles.charCount}>
+        {body.length}/{BROADCAST_MAX}
+      </Text>
+
+      <Text style={styles.fieldLabel}>Send to</Text>
+      <View style={styles.audienceColumn}>
+        {AUDIENCES.map((option) => {
+          const active = audience === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              style={[styles.audienceRow, active && styles.audienceRowActive]}
+              onPress={() => {
+                setAudience(option.value);
+                setPickerSearch('');
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active }}
+            >
+              <Ionicons
+                name={active ? 'radio-button-on' : 'radio-button-off'}
+                size={20}
+                color={active ? colors.green : colors.inkFaint}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.audienceLabel, active && { color: colors.green }]}>
+                  {option.label}
+                </Text>
+                <Text style={styles.audienceHint}>{option.hint}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {audience !== 'ALL_AGENTS' ? (
+        <View style={styles.pickerSearch}>
+          <Ionicons name="search" size={15} color={colors.inkFaint} />
+          <TextInput
+            style={styles.pickerSearchInput}
+            value={pickerSearch}
+            onChangeText={setPickerSearch}
+            placeholder={
+              audience === 'AGENTS' ? 'Search name, phone, station\u2026' : 'Search groups\u2026'
+            }
+            placeholderTextColor={colors.inkFaint}
+            autoCorrect={false}
+          />
+        </View>
+      ) : null}
+
+      {(audience === 'AGENTS' && agents.isPending) ||
+      (audience === 'GROUPS' && groups.isPending) ? (
+        <Text style={styles.pickerLoading}>Loading…</Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <View style={styles.composerRoot}>
+        <View style={[styles.composerHeader, { paddingTop: insets.top + spacing.sm }]}>
+          <Pressable onPress={onClose} hitSlop={HIT_SLOP} style={styles.headerButton}>
+            <Ionicons name="close" size={24} color={colors.inkMuted} />
+          </Pressable>
+          <Text style={styles.composerTitle}>New message</Text>
+          <View style={{ width: MIN_TOUCH }} />
+        </View>
+
+        {audience === 'AGENTS' ? (
+          <FlatList
+            data={pickableAgents}
+            keyExtractor={(a) => a.id}
+            ListHeaderComponent={header}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.composerBody}
+            renderItem={({ item }: { item: AgentListItem }) => {
+              const selected = agentIds.has(item.id);
+              return (
+                <Pressable
+                  style={[styles.pickRow, selected && styles.pickRowSelected]}
+                  onPress={() => toggle(agentIds, item.id, setAgentIds)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
+                >
+                  <Ionicons
+                    name={selected ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={selected ? colors.green : colors.inkFaint}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pickName}>{item.full_name}</Text>
+                    <Text style={styles.pickMeta} numberOfLines={1}>
+                      {item.phone_number}
+                      {item.location ? ` \u00b7 ${item.location}` : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+        ) : audience === 'GROUPS' ? (
+          <FlatList
+            data={pickableGroups}
+            keyExtractor={(g) => g.id}
+            ListHeaderComponent={header}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.composerBody}
+            renderItem={({ item }: { item: SpecialGroupItem }) => {
+              const selected = groupIds.has(item.id);
+              return (
+                <Pressable
+                  style={[styles.pickRow, selected && styles.pickRowSelected]}
+                  onPress={() => toggle(groupIds, item.id, setGroupIds)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
+                >
+                  <Ionicons
+                    name={selected ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={selected ? colors.green : colors.inkFaint}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pickName}>{item.name}</Text>
+                    <Text style={styles.pickMeta}>
+                      {item.category_display} · {item.member_count} members
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+        ) : (
+          <FlatList
+            data={[]}
+            renderItem={null}
+            ListHeaderComponent={header}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.composerBody}
+          />
+        )}
+
+        <View style={[styles.composerFooter, { paddingBottom: insets.bottom + spacing.md }]}>
+          <Text style={styles.selectionSummary}>{selectionSummary}</Text>
+          <Button
+            label={send.isPending ? 'Sending\u2026' : 'Send message'}
+            onPress={() => send.mutate()}
+            loading={send.isPending}
+            disabled={!canSend}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// --------------------------------------------------------------------------- //
 // Inbox list
 // --------------------------------------------------------------------------- //
 
@@ -214,6 +483,7 @@ export default function InboxScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [openThread, setOpenThread] = useState<InboxConversation | null>(null);
+  const [composing, setComposing] = useState(false);
 
   const inbox = useQuery({
     queryKey: ['admin', 'inbox'],
@@ -232,23 +502,15 @@ export default function InboxScreen() {
   );
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={HIT_SLOP}
-          style={styles.backButton}
-          accessibilityLabel="Back"
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.ink} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>COMMUNICATIONS</Text>
-          <Text style={styles.title}>Messages</Text>
-        </View>
-      </View>
+    <View style={styles.screen}>
+      <AdminHeader
+        kicker="COMMUNICATIONS"
+        title="Messages"
+        onBack={() => router.back()}
+        right={<HeaderAction icon="create" label="New" onPress={() => setComposing(true)} />}
+      />
 
-      <View style={styles.searchBox}>
+      <View style={[styles.searchBox, { marginTop: spacing.md }]}>
         <Ionicons name="search" size={16} color={colors.inkFaint} />
         <TextInput
           style={styles.searchInput}
@@ -334,31 +596,107 @@ export default function InboxScreen() {
       {openThread ? (
         <ThreadView conversation={openThread} onClose={() => setOpenThread(null)} />
       ) : null}
+      {composing ? <BroadcastComposer onClose={() => setComposing(false)} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
-  header: {
+
+  composerRoot: { flex: 1, backgroundColor: colors.canvas },
+  composerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
+  composerTitle: { ...typography.heading, color: colors.ink },
+  composerTop: { gap: spacing.xs, paddingBottom: spacing.sm },
+  composerBody: { padding: spacing.base, paddingBottom: spacing.xxl },
+  fieldLabel: { ...typography.label, color: colors.inkMuted, marginTop: spacing.md },
+  bodyInput: {
+    ...typography.body,
+    color: colors.ink,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.line,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 110,
+    textAlignVertical: 'top',
+    marginTop: spacing.xs,
   },
-  kicker: { ...typography.micro, color: colors.inkFaint },
-  title: { ...typography.title, color: colors.ink },
+  charCount: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.inkFaint,
+    alignSelf: 'flex-end',
+  },
+  audienceColumn: { gap: spacing.sm, marginTop: spacing.xs },
+  audienceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: MIN_TOUCH,
+  },
+  audienceRowActive: { borderColor: colors.green, backgroundColor: colors.greenSurface },
+  audienceLabel: { ...typography.bodyStrong, fontSize: 14, color: colors.ink },
+  audienceHint: { ...typography.caption, fontSize: 11, color: colors.inkFaint },
+  pickerSearch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    minHeight: 44,
+    marginTop: spacing.md,
+  },
+  pickerSearchInput: { ...typography.body, color: colors.ink, flex: 1, paddingVertical: 8 },
+  pickerLoading: { ...typography.caption, color: colors.inkFaint, marginTop: spacing.sm },
+  pickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    minHeight: MIN_TOUCH,
+  },
+  pickRowSelected: { borderColor: colors.green, backgroundColor: colors.greenSurface },
+  pickName: { ...typography.bodyStrong, fontSize: 14, color: colors.ink },
+  pickMeta: { ...typography.caption, fontSize: 12, color: colors.inkMuted },
+  composerFooter: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.sm,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+    gap: spacing.sm,
+  },
+  selectionSummary: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.inkMuted,
+    textAlign: 'center',
+  },
+
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',

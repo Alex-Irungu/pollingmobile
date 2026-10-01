@@ -38,6 +38,7 @@ import {
   formatNumber,
 } from '../../src/components/ui';
 import { DayChecklist } from '../../src/components/DayChecklist';
+import { ElectionCountdown } from '../../src/components/ElectionCountdown';
 import { LiveTallyCard } from '../../src/components/LiveTallyCard';
 import { PanicButton } from '../../src/components/PanicButton';
 import { UpdateBanner } from '../../src/components/UpdateBanner';
@@ -169,6 +170,11 @@ export default function MyStationScreen() {
         showsVerticalScrollIndicator={false}
       >
         <UpdateBanner />
+
+        {/* The one number everyone wants: days until polls open. */}
+        <View style={styles.block}>
+          <ElectionCountdown />
+        </View>
 
         {notAnAgent ? (
           <View style={styles.block}>

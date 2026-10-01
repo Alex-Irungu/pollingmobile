@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
+import { AdminHeader } from '../../src/components/AdminHeader';
 import { LiveTallyCard } from '../../src/components/LiveTallyCard';
 import {
   Banner,
@@ -57,11 +58,8 @@ export default function TallyScreen() {
   if (races.isPending) return <LoadingState message="Loading races…" />;
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.kicker}>LIVE RESULTS</Text>
-        <Text style={styles.title}>Tally</Text>
-      </View>
+    <View style={styles.screen}>
+      <AdminHeader kicker="LIVE RESULTS" title="Tally" />
 
       {allRaces.length === 0 ? (
         <EmptyState
@@ -187,10 +185,11 @@ export default function TallyScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
-  header: { paddingHorizontal: spacing.base, paddingVertical: spacing.md },
-  kicker: { ...typography.micro, color: colors.inkFaint },
-  title: { ...typography.title, color: colors.ink },
-  body: { paddingHorizontal: spacing.base, gap: spacing.md },
+  body: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.md,
+    gap: spacing.md,
+  },
   raceRow: { gap: spacing.sm, paddingBottom: spacing.xs },
   raceChip: {
     backgroundColor: colors.surface,

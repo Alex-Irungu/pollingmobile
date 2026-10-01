@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
 import type { StructureItem } from '../../src/api/types';
+import { AdminHeader } from '../../src/components/AdminHeader';
 import { EmptyState, LoadingState, formatNumber } from '../../src/components/ui';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
@@ -88,22 +89,14 @@ export default function StructureScreen() {
     .join(' › ');
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        {stack.length > 1 ? (
-          <Pressable onPress={goBack} hitSlop={HIT_SLOP} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={22} color={colors.ink} />
-          </Pressable>
-        ) : null}
-        <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>
-            {breadcrumb ? breadcrumb.toUpperCase() : 'ELECTORAL STRUCTURE'}
-          </Text>
-          <Text style={styles.title}>{LEVEL_TITLE[current.level]}</Text>
-        </View>
-      </View>
+    <View style={styles.screen}>
+      <AdminHeader
+        kicker={breadcrumb ? breadcrumb.toUpperCase() : 'ELECTORAL STRUCTURE'}
+        title={LEVEL_TITLE[current.level]}
+        onBack={stack.length > 1 ? goBack : undefined}
+      />
 
-      <View style={styles.searchBox}>
+      <View style={[styles.searchBox, { marginTop: spacing.md }]}>
         <Ionicons name="search" size={16} color={colors.inkFaint} />
         <TextInput
           style={styles.searchInput}
@@ -176,25 +169,6 @@ export default function StructureScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  kicker: { ...typography.micro, color: colors.inkFaint },
-  title: { ...typography.title, color: colors.ink },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',

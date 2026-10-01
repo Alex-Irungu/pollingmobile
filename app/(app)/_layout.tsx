@@ -86,7 +86,10 @@ export default function AppLayout() {
   // Android's 3-button and gesture nav bars both live in this inset. Without
   // adding it to the tab bar's height/padding, the bar renders *behind* the
   // system nav rather than above it, so the icons are unreachable.
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 0 : spacing.sm);
+  // Some Android builds report a smaller inset than the 3-button bar actually
+  // occupies, which crops the tab labels; a 12dp floor costs nothing on
+  // devices that report correctly and fixes the ones that lie.
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 0 : 12);
 
   // First launch on a fresh install: neither the cache nor the network has
   // said who this is. A blank frame beats mounting the wrong navigator and
@@ -99,7 +102,7 @@ export default function AppLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.green,
         tabBarInactiveTintColor: colors.inkFaint,
-        tabBarStyle: [styles.tabBar, { height: 56 + bottomInset, paddingBottom: bottomInset }],
+        tabBarStyle: [styles.tabBar, { height: 60 + bottomInset, paddingBottom: bottomInset }],
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
       }}

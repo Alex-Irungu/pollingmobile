@@ -388,6 +388,21 @@ export function fetchThread(conversationId: string) {
   return apiRequest<ThreadResponse>(`/messages/inbox/${conversationId}/`);
 }
 
+/** Compose-to-many. The server fans out to each agent's thread and fires one
+ * batched push run; sms_pending counts group members reachable only by SMS
+ * (delivery deferred until the SMS provider is connected). */
+export function sendBroadcast(payload: {
+  body: string;
+  audience: 'ALL_AGENTS' | 'AGENTS' | 'GROUPS';
+  agent_ids?: string[];
+  group_ids?: string[];
+}) {
+  return apiRequest<{ id: string; delivered_in_app: number; sms_pending: number }>(
+    '/messages/broadcasts/',
+    { method: 'POST', body: payload },
+  );
+}
+
 export function sendThreadMessage(
   conversationId: string,
   payload: { body: string; client_uuid: string },

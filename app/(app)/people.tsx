@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
 import type { GroupMemberItem, Person, SpecialGroupItem } from '../../src/api/types';
+import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
 import { Button } from '../../src/components/Button';
 import { CentrePicker, type PickedCentre } from '../../src/components/CentrePicker';
 import {
@@ -449,10 +450,25 @@ export default function PeopleScreen() {
   });
   const [openGroup, setOpenGroup] = useState<SpecialGroupItem | null>(null);
 
+  // One unfiltered fetch, searched in memory: every keystroke matches
+  // instantly against name, phone, email, polling centre and notes, with no
+  // network round trip per letter.
   const people = useQuery({
-    queryKey: [...peopleKey, search],
-    queryFn: () => api.fetchPeople(search || undefined),
+    queryKey: [...peopleKey],
+    queryFn: () => api.fetchPeople(),
     staleTime: 30_000,
+  });
+
+  const needle = search.trim().toLowerCase();
+  const filteredPeople = (people.data ?? []).filter((p) => {
+    if (!needle) return true;
+    return (
+      p.full_name.toLowerCase().includes(needle) ||
+      (p.phone_number ?? '').includes(needle) ||
+      (p.email ?? '').toLowerCase().includes(needle) ||
+      (p.polling_centre_name ?? '').toLowerCase().includes(needle) ||
+      (p.notes ?? '').toLowerCase().includes(needle)
+    );
   });
   const stats = useQuery({
     queryKey: peopleStatsKey,
@@ -482,22 +498,20 @@ export default function PeopleScreen() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.screenHeader}>
-        <View>
-          <Text style={styles.screenKicker}>GROUND NETWORK</Text>
-          <Text style={styles.screenTitle}>My People</Text>
-        </View>
-        {segment === 'people' ? (
-          <Pressable
-            style={styles.addButton}
-            onPress={() => setPersonForm({ open: true, editing: null })}
-            accessibilityLabel="Register a supporter"
-          >
-            <Ionicons name="person-add" size={22} color={colors.white} />
-          </Pressable>
-        ) : null}
-      </View>
+    <View style={styles.screen}>
+      <AdminHeader
+        kicker="GROUND NETWORK"
+        title="My People"
+        right={
+          segment === 'people' ? (
+            <HeaderAction
+              icon="person-add"
+              label="Register"
+              onPress={() => setPersonForm({ open: true, editing: null })}
+            />
+          ) : undefined
+        }
+      />
 
       {/* Segment switch */}
       <View style={styles.segmentRow}>
@@ -551,7 +565,7 @@ export default function PeopleScreen() {
               style={styles.searchInput}
               value={search}
               onChangeText={setSearch}
-              placeholder="Search name or phone…"
+              placeholder="Name, phone, centre, notes…"
               placeholderTextColor={colors.inkFaint}
               autoCorrect={false}
             />
@@ -561,7 +575,7 @@ export default function PeopleScreen() {
             <LoadingState message="Loading people…" />
           ) : (
             <FlatList
-              data={people.data ?? []}
+              data={filteredPeople}
               keyExtractor={(p) => p.id}
               contentContainerStyle={[
                 styles.list,
@@ -675,23 +689,6 @@ export default function PeopleScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
-  screenHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
-  },
-  screenKicker: { ...typography.micro, color: colors.inkFaint },
-  screenTitle: { ...typography.title, color: colors.ink },
-  addButton: {
-    width: MIN_TOUCH,
-    height: MIN_TOUCH,
-    borderRadius: radius.md,
-    backgroundColor: colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   segmentRow: {
     flexDirection: 'row',
@@ -699,6 +696,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     padding: 3,
+    marginTop: spacing.md,
     marginBottom: spacing.md,
   },
   segmentButton: {
