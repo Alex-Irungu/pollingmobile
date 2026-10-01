@@ -220,3 +220,152 @@ export interface MessageListResponse {
   count: number;
   results: ChatMessage[];
 }
+
+// --------------------------------------------------------------------------- //
+// Admin mode
+// --------------------------------------------------------------------------- //
+
+/**
+ * The authenticated user, from /auth/me/. Only the fields admin mode needs;
+ * `role` is a plain string, not a closed union, for the same reason as
+ * SubmissionStatus: the backend's role vocabulary can grow and a deployed
+ * phone must render it rather than crash.
+ */
+export interface UserMe {
+  id: string;
+  email: string;
+  full_name: string;
+  phone_number: string;
+  role: string;
+  is_super_admin: boolean;
+}
+
+export interface AdminEvent {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  category: string;
+  priority: string;
+  starts_at: string;
+  ends_at: string;
+  contact1_name: string;
+  contact1_phone: string;
+  contact2_name: string;
+  contact2_phone: string;
+  conflict_acknowledged: boolean;
+  created_by_name: string;
+  created_at: string;
+}
+
+export interface AdminEventInput {
+  title: string;
+  description: string;
+  location: string;
+  category: string;
+  priority: string;
+  starts_at: string;
+  ends_at: string;
+  contact1_name: string;
+  contact1_phone: string;
+  contact2_name: string;
+  contact2_phone: string;
+  conflict_acknowledged: boolean;
+}
+
+export interface EventSaveResult {
+  event: AdminEvent;
+  conflicts: AdminEvent[];
+}
+
+export interface RaceListItem {
+  id: string;
+  race_type: string;
+  race_type_display: string;
+  title: string;
+  scope_level: string;
+  geography_name: string;
+  candidate_count: number;
+  is_active: boolean;
+  election_name: string;
+}
+
+/** One county/constituency/ward row from the geography dropdowns. */
+export interface GeoUnit {
+  id: string;
+  name: string;
+  iebc_code: string;
+}
+
+export interface PollingCentreItem {
+  id: string;
+  name: string;
+  iebc_code: string;
+  ward_name?: string | null;
+  station_count?: number | null;
+  registered_voters?: number | null;
+}
+
+export interface Person {
+  id: string;
+  full_name: string;
+  phone_number: string;
+  email: string;
+  polling_centre: string | null;
+  polling_centre_name: string | null;
+  polling_centre_code: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PeopleStats {
+  total: number;
+  assigned: number;
+  unassigned: number;
+}
+
+export interface SpecialGroupItem {
+  id: string;
+  name: string;
+  category: string;
+  category_display: string;
+  description: string;
+  county_name?: string | null;
+  constituency_name?: string | null;
+  ward_name?: string | null;
+  meeting_venue: string;
+  is_active: boolean;
+  member_count: number;
+}
+
+export interface GroupMemberItem {
+  id: string;
+  group: string;
+  group_name: string;
+  full_name: string;
+  phone_number: string;
+  email: string;
+  rank: string;
+  polling_centre: string | null;
+  polling_centre_name: string | null;
+  polling_centre_code: string | null;
+  notes: string;
+}
+
+export interface StructureItem {
+  id: string;
+  name: string;
+  code: string;
+  stations: number;
+  centres: number;
+  registered_voters: number;
+  people: number;
+}
+
+export interface StructureResponse {
+  level: string;
+  dataset_version?: string;
+  classification?: string;
+  items: StructureItem[];
+}

@@ -52,12 +52,14 @@ export function useMessages() {
   });
 }
 
-export function useConversation() {
+export function useConversation(enabled = true) {
   return useQuery({
     queryKey: conversationQueryKey,
     queryFn: api.fetchConversation,
     refetchInterval: BADGE_POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
+    // Admin sessions have no agent conversation; polling would 403 forever.
+    enabled,
   });
 }
 
@@ -68,8 +70,8 @@ export function useConversation() {
  * react-query serves both from one request instead of two definitions that can
  * drift apart.
  */
-export function useUnreadCount(): number {
-  const { data } = useConversation();
+export function useUnreadCount(enabled = true): number {
+  const { data } = useConversation(enabled);
   return data?.unread ?? 0;
 }
 

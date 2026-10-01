@@ -12,7 +12,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -42,6 +42,7 @@ import { LiveTallyCard } from '../../src/components/LiveTallyCard';
 import { PanicButton } from '../../src/components/PanicButton';
 import { UpdateBanner } from '../../src/components/UpdateBanner';
 import { useLiveTally } from '../../src/hooks/useLiveTally';
+import { useMe } from '../../src/hooks/useMe';
 import { usePosting } from '../../src/hooks/usePosting';
 import { useSubmissionQueue } from '../../src/hooks/useSubmissionQueue';
 import { flushQueue } from '../../src/services/submissionQueue';
@@ -58,6 +59,7 @@ import {
 export default function MyStationScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isAdmin } = useMe();
   const { signOut } = useAuth();
   const { data, isLoading, error, refetch, isRefetching } = usePosting();
   const queue = useSubmissionQueue();
@@ -94,6 +96,12 @@ export default function MyStationScreen() {
       ],
     );
   }, [signOut]);
+
+  // Admin roles get the admin dashboard; this screen's data endpoint
+  // (/agents/me/) would 403 for them anyway.
+  if (isAdmin) {
+    return <Redirect href="/(app)/admin" />;
+  }
 
   if (isLoading && !data) {
     return (

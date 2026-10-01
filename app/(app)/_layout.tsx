@@ -1,11 +1,20 @@
 /**
- * Signed-in tab navigation.
+ * Signed-in tab navigation, in two shapes decided by the signed-in role.
  *
- * Four tabs, and no more. An agent's jobs -- know your station, submit the
- * result, talk to the command centre, manage your own account -- and every
- * extra destination is something to get lost in at 11pm. The live tally the
- * campaign asked for lives on My Station rather than as a fifth tab: ambient
- * context on the screen the app opens to, not a dashboard to get lost in.
+ * AGENT (the original app): My Station, Submit, Messages, Profile -- four
+ * tabs and no more. An agent's jobs -- know your station, submit the result,
+ * talk to the command centre, manage your own account -- and every extra
+ * destination is something to get lost in at 11pm.
+ *
+ * ADMIN (command-centre roles): Dashboard, Events, Tally, People, Structure.
+ * The ground-work slice of the web Command Centre, for the aspirant or
+ * coordinator standing at a rally with no laptop. Office work (CSV imports,
+ * user administration, verification) deliberately stays on the web.
+ *
+ * One navigator renders both: every screen is declared, and the role decides
+ * which get a tab and which get href:null. The backend enforces authorization
+ * regardless -- an agent token calling an admin endpoint 403s -- so this
+ * gating is presentation, not security.
  */
 
 import { useQueryClient } from '@tanstack/react-query';
@@ -25,19 +34,23 @@ import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory'
 import { onOutboxEvent, startOutboxWatcher } from '../../src/services/messageOutbox';
 import { registerForPushNotifications } from '../../src/services/pushNotifications';
 import { onQueueSent, startQueueWatcher } from '../../src/services/submissionQueue';
+import { useMe } from '../../src/hooks/useMe';
 import { colors, spacing, typography } from '../../src/theme';
 import { TabIcon } from '../../src/components/TabIcon';
 
 export default function AppLayout() {
-  const unread = useUnreadCount();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { isAdmin, resolving } = useMe();
+  const unread = useUnreadCount(!isAdmin);
 
   // The offline submission queue retries on its own for as long as the agent
   // is signed in. When a queued result finally lands, My Station and History
   // must reflect it without waiting for their next natural refetch.
+  // Agent plumbing only: an admin has no submission queue or agent outbox.
   useEffect(() => {
+    if (isAdmin) return;
     startQueueWatcher();
     startOutboxWatcher();
     const stopQueue = onQueueSent(() => {
@@ -54,11 +67,13 @@ export default function AppLayout() {
       stopQueue();
       stopOutbox();
     };
-  }, [queryClient]);
+  }, [queryClient, isAdmin]);
 
   // Pushes: register this device once signed in, and make tapping a
-  // notification land on the conversation it announced.
+  // notification land on the conversation it announced. Agent-only -- the
+  // push token endpoint lives under /agents/me/ and 403s for staff.
   useEffect(() => {
+    if (isAdmin) return;
     void registerForPushNotifications();
     const sub = Notifications.addNotificationResponseReceivedListener(() => {
       queryClient.invalidateQueries({ queryKey: messagesQueryKey });
@@ -66,12 +81,17 @@ export default function AppLayout() {
       router.navigate('/(app)/chat');
     });
     return () => sub.remove();
-  }, [queryClient, router]);
+  }, [queryClient, router, isAdmin]);
 
   // Android's 3-button and gesture nav bars both live in this inset. Without
   // adding it to the tab bar's height/padding, the bar renders *behind* the
   // system nav rather than above it, so the icons are unreachable.
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 0 : spacing.sm);
+
+  // First launch on a fresh install: neither the cache nor the network has
+  // said who this is. A blank frame beats mounting the wrong navigator and
+  // tearing it down a moment later.
+  if (resolving) return null;
 
   return (
     <Tabs
@@ -84,9 +104,11 @@ export default function AppLayout() {
         tabBarItemStyle: styles.tabItem,
       }}
     >
+      {/* ---- Agent tabs ---- */}
       <Tabs.Screen
         name="index"
         options={{
+          href: isAdmin ? null : undefined,
           title: 'My Station',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
@@ -102,6 +124,7 @@ export default function AppLayout() {
       <Tabs.Screen
         name="submit"
         options={{
+          href: isAdmin ? null : undefined,
           title: 'Submit',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
@@ -117,6 +140,7 @@ export default function AppLayout() {
       <Tabs.Screen
         name="chat"
         options={{
+          href: isAdmin ? null : undefined,
           title: 'Messages',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
@@ -133,11 +157,94 @@ export default function AppLayout() {
       <Tabs.Screen
         name="profile"
         options={{
+          href: isAdmin ? null : undefined,
           title: 'Profile',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               name="person-outline"
               focusedName="person"
+              size={size}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+
+      {/* ---- Admin tabs ---- */}
+      <Tabs.Screen
+        name="admin"
+        options={{
+          href: isAdmin ? undefined : null,
+          title: 'Dashboard',
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="grid-outline"
+              focusedName="grid"
+              size={size}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="events"
+        options={{
+          href: isAdmin ? undefined : null,
+          title: 'Events',
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="calendar-outline"
+              focusedName="calendar"
+              size={size}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="tally"
+        options={{
+          href: isAdmin ? undefined : null,
+          title: 'Tally',
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="stats-chart-outline"
+              focusedName="stats-chart"
+              size={size}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="people"
+        options={{
+          href: isAdmin ? undefined : null,
+          title: 'My People',
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="people-outline"
+              focusedName="people"
+              size={size}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="structure"
+        options={{
+          href: isAdmin ? undefined : null,
+          title: 'Structure',
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="git-branch-outline"
+              focusedName="git-branch"
               size={size}
               color={color}
               focused={focused}
