@@ -87,6 +87,18 @@ function agendaRange() {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+/** The archive window for "All events" and the calendar: a year each way. */
+function archiveRange() {
+  const now = new Date();
+  const from = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+  const to = new Date(now.getFullYear() + 1, now.getMonth() + 1, 0);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+function monthLabel(iso: string) {
+  return new Date(iso).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
+}
+
 // --------------------------------------------------------------------------- //
 // Live countdown strip
 // --------------------------------------------------------------------------- //
@@ -170,11 +182,14 @@ function EventCard({
   index,
   onEdit,
   onDelete,
+  showDate = false,
 }: {
   event: AdminEvent;
   index: number;
   onEdit: () => void;
   onDelete: () => void;
+  /** Include the date in the meta line, for flat lists spanning many days. */
+  showDate?: boolean;
 }) {
   const category = CATEGORIES.find((c) => c.value === event.category)?.label ?? event.category;
   const contacts = [
@@ -200,6 +215,7 @@ function EventCard({
 
       <Text style={styles.eventTitle}>{event.title}</Text>
       <Text style={styles.eventMeta}>
+        {showDate ? `${dayLabel(event.starts_at)}  ·  ` : ''}
         {fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
         {event.location ? `  ·  ${event.location}` : ''}
       </Text>
@@ -533,8 +549,144 @@ function EventForm({
 }
 
 // --------------------------------------------------------------------------- //
+// Month calendar: a 7-column grid with event dots; tap a day to see its
+// events below. Built by hand -- a calendar library is a heavy dependency for
+// one screen, and this stays consistent with the app's visual language.
+// --------------------------------------------------------------------------- //
+
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+function MonthCalendar({
+  events,
+  selectedDay,
+  onSelectDay,
+}: {
+  events: AdminEvent[];
+  selectedDay: string;
+  onSelectDay: (dayKey: string) => void;
+}) {
+  const [cursor, setCursor] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  const eventDays = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const event of events) {
+      const key = dayKeyOf(event.starts_at);
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [events]);
+
+  // Weeks start Monday, matching how campaign weeks are planned here.
+  const weeks = useMemo(() => {
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth();
+    const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const cells: Array<{ day: number; key: string } | null> = [];
+    for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      cells.push({ day, key: `${year}-${pad2(month + 1)}-${pad2(day)}` });
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    const rows: Array<typeof cells> = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    return rows;
+  }, [cursor]);
+
+  const todayKey = dayKeyOf(new Date().toISOString());
+  const monthTitle = cursor.toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
+
+  return (
+    <Card style={styles.calendarCard}>
+      <View style={styles.calendarHeader}>
+        <Pressable
+          onPress={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
+          hitSlop={HIT_SLOP}
+          style={styles.calendarNav}
+          accessibilityLabel="Previous month"
+        >
+          <Ionicons name="chevron-back" size={20} color={colors.green} />
+        </Pressable>
+        <Text style={styles.calendarTitle}>{monthTitle}</Text>
+        <Pressable
+          onPress={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
+          hitSlop={HIT_SLOP}
+          style={styles.calendarNav}
+          accessibilityLabel="Next month"
+        >
+          <Ionicons name="chevron-forward" size={20} color={colors.green} />
+        </Pressable>
+      </View>
+
+      <View style={styles.weekRow}>
+        {WEEKDAYS.map((label, i) => (
+          <Text key={`${label}-${i}`} style={styles.weekdayLabel}>
+            {label}
+          </Text>
+        ))}
+      </View>
+
+      {weeks.map((week, wi) => (
+        <View key={wi} style={styles.weekRow}>
+          {week.map((cell, ci) => {
+            if (!cell) return <View key={ci} style={styles.dayCell} />;
+            const count = eventDays.get(cell.key) ?? 0;
+            const isToday = cell.key === todayKey;
+            const isSelected = cell.key === selectedDay;
+            return (
+              <Pressable
+                key={ci}
+                style={[
+                  styles.dayCell,
+                  isToday && styles.dayCellToday,
+                  isSelected && styles.dayCellSelected,
+                ]}
+                onPress={() => onSelectDay(cell.key)}
+                accessibilityRole="button"
+                accessibilityLabel={`${cell.day} ${monthTitle}${count ? `, ${count} event${count > 1 ? 's' : ''}` : ''}`}
+              >
+                <Text
+                  style={[
+                    styles.dayText,
+                    isToday && styles.dayTextToday,
+                    isSelected && styles.dayTextSelected,
+                  ]}
+                >
+                  {cell.day}
+                </Text>
+                <View style={styles.dotRow}>
+                  {Array.from({ length: Math.min(count, 3) }).map((_, di) => (
+                    <View
+                      key={di}
+                      style={[styles.dot, isSelected && { backgroundColor: colors.white }]}
+                    />
+                  ))}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+// --------------------------------------------------------------------------- //
 // Screen
 // --------------------------------------------------------------------------- //
+
+type EventsView = 'agenda' | 'calendar' | 'all';
+
+const VIEWS: Array<{ value: EventsView; label: string }> = [
+  { value: 'agenda', label: 'Agenda' },
+  { value: 'calendar', label: 'Calendar' },
+  { value: 'all', label: 'All events' },
+];
 
 export default function EventsScreen() {
   const insets = useSafeAreaInsets();
@@ -543,6 +695,8 @@ export default function EventsScreen() {
     open: false,
     editing: null,
   });
+  const [view, setView] = useState<EventsView>('agenda');
+  const [selectedDay, setSelectedDay] = useState(() => dayKeyOf(new Date().toISOString()));
 
   const range = useMemo(agendaRange, []);
   const query = useQuery({
@@ -551,9 +705,22 @@ export default function EventsScreen() {
     staleTime: 30_000,
   });
 
+  // The archive powers the calendar and the full list: a year each way,
+  // fetched only once either view is opened.
+  const wideRange = useMemo(archiveRange, []);
+  const archive = useQuery({
+    queryKey: [...eventsQueryKey, 'archive'],
+    queryFn: () => api.fetchAdminEvents(wideRange.from, wideRange.to),
+    staleTime: 60_000,
+    enabled: view !== 'agenda',
+  });
+
   const remove = useMutation({
     mutationFn: api.deleteAdminEvent,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: eventsQueryKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventsQueryKey });
+      queryClient.invalidateQueries({ queryKey: [...eventsQueryKey, 'archive'] });
+    },
   });
 
   function confirmDelete(event: AdminEvent) {
@@ -582,6 +749,26 @@ export default function EventsScreen() {
     return { current, past };
   }, [query.data]);
 
+  // All recorded events, oldest first, grouped by month for scannability.
+  const allByMonth = useMemo(() => {
+    const events = (archive.data?.results ?? [])
+      .slice()
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+    const groups: Array<{ month: string; events: AdminEvent[] }> = [];
+    for (const event of events) {
+      const month = monthLabel(event.starts_at);
+      const last = groups[groups.length - 1];
+      if (last && last.month === month) last.events.push(event);
+      else groups.push({ month, events: [event] });
+    }
+    return groups;
+  }, [archive.data]);
+
+  const archiveEvents = archive.data?.results ?? [];
+  const selectedDayEvents = archiveEvents
+    .filter((e) => dayKeyOf(e.starts_at) === selectedDay)
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+
   if (query.isPending) return <LoadingState message="Loading events…" />;
 
   const isEmpty = sections.current.length === 0 && sections.past.length === 0;
@@ -600,17 +787,101 @@ export default function EventsScreen() {
         }
       />
 
+      {/* View switch: the agenda for "what's next", the calendar for "what's
+          on the 14th", and the flat list for the full record. */}
+      <View style={styles.segmentRow}>
+        {VIEWS.map((option) => {
+          const active = view === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              style={[styles.segmentButton, active && styles.segmentActive]}
+              onPress={() => setView(option.value)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.xxl }]}
         refreshControl={
           <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={() => query.refetch()}
+            refreshing={query.isRefetching || archive.isRefetching}
+            onRefresh={() => {
+              void query.refetch();
+              if (view !== 'agenda') void archive.refetch();
+            }}
             tintColor={colors.green}
           />
         }
       >
-        {isEmpty ? (
+        {view === 'calendar' ? (
+          archive.isPending ? (
+            <LoadingState message="Loading calendar…" />
+          ) : (
+            <>
+              <MonthCalendar
+                events={archiveEvents}
+                selectedDay={selectedDay}
+                onSelectDay={setSelectedDay}
+              />
+              <View style={styles.daySection}>
+                <SectionLabel>
+                  {dayLabel(`${selectedDay}T00:00:00`)}
+                </SectionLabel>
+                {selectedDayEvents.length ? (
+                  selectedDayEvents.map((event, i) => (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      index={i}
+                      onEdit={() => setForm({ open: true, editing: event })}
+                      onDelete={() => confirmDelete(event)}
+                    />
+                  ))
+                ) : (
+                  <Text style={styles.noDayEvents}>Nothing scheduled this day.</Text>
+                )}
+              </View>
+            </>
+          )
+        ) : view === 'all' ? (
+          archive.isPending ? (
+            <LoadingState message="Loading all events…" />
+          ) : allByMonth.length === 0 ? (
+            <EmptyState
+              title="Nothing recorded"
+              message="Every event you record will appear here, in date order."
+              icon={<Ionicons name="calendar-outline" size={40} color={colors.inkFaint} />}
+              action={{
+                label: 'Record an event',
+                onPress: () => setForm({ open: true, editing: null }),
+              }}
+            />
+          ) : (
+            allByMonth.map((group) => (
+              <View key={group.month} style={styles.daySection}>
+                <SectionLabel>{group.month}</SectionLabel>
+                {group.events.map((event, i) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    index={i}
+                    showDate
+                    onEdit={() => setForm({ open: true, editing: event })}
+                    onDelete={() => confirmDelete(event)}
+                  />
+                ))}
+              </View>
+            ))
+          )
+        ) : isEmpty ? (
           <EmptyState
             title="Nothing scheduled"
             message="Record the campaign's first rally, meeting or baraza."
@@ -676,6 +947,70 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   daySection: { gap: spacing.sm },
+
+  segmentRow: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.base,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: 3,
+    marginTop: spacing.md,
+  },
+  segmentButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  segmentActive: { backgroundColor: colors.surface },
+  segmentText: { ...typography.label, fontSize: 12, color: colors.inkMuted },
+  segmentTextActive: { color: colors.green },
+
+  calendarCard: { gap: spacing.xs, paddingVertical: spacing.md },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  calendarNav: {
+    width: MIN_TOUCH,
+    height: MIN_TOUCH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarTitle: { ...typography.bodyStrong, color: colors.ink },
+  weekRow: { flexDirection: 'row' },
+  weekdayLabel: {
+    flex: 1,
+    textAlign: 'center',
+    ...typography.micro,
+    fontSize: 10,
+    color: colors.inkFaint,
+    paddingVertical: 4,
+  },
+  dayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
+    margin: 1,
+  },
+  dayCellToday: { borderWidth: 1, borderColor: colors.green },
+  dayCellSelected: { backgroundColor: colors.green },
+  dayText: { ...typography.body, fontSize: 14, color: colors.ink },
+  dayTextToday: { color: colors.green, fontWeight: '700' },
+  dayTextSelected: { color: colors.white, fontWeight: '700' },
+  dotRow: { flexDirection: 'row', gap: 2, height: 5, marginTop: 1 },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.gold },
+  noDayEvents: {
+    ...typography.caption,
+    color: colors.inkFaint,
+    paddingVertical: spacing.md,
+  },
 
   eventCard: { gap: spacing.sm, marginBottom: spacing.sm },
   eventHeader: {

@@ -138,6 +138,23 @@ export function useSendMessage() {
 }
 
 /**
+ * Total unread across every agent thread, for the admin's dashboard badge.
+ *
+ * Shares the inbox screen's query key so the list and the badge ride one
+ * request. Polled on the badge cadence -- a dot does not need 6s accuracy.
+ */
+export function useAdminUnread(enabled = true): number {
+  const { data } = useQuery({
+    queryKey: ['admin', 'inbox'],
+    queryFn: api.fetchInbox,
+    refetchInterval: BADGE_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    enabled,
+  });
+  return (data?.results ?? []).reduce((sum, thread) => sum + thread.unread, 0);
+}
+
+/**
  * "Delete for me". Optimistic: the bubbles vanish at once and come back if the
  * server refuses. Messages still pending in the outbox have no server id, so
  * they are dropped from the request.

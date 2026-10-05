@@ -608,6 +608,7 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
 export default function InboxScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [openThread, setOpenThread] = useState<InboxConversation | null>(null);
   const [composing, setComposing] = useState(false);
@@ -618,6 +619,59 @@ export default function InboxScreen() {
     refetchInterval: INBOX_POLL_MS,
     refetchIntervalInBackground: false,
   });
+
+  // "Delete chat for me": the thread leaves this admin's inbox immediately
+  // and reappears only if the agent writes again. Other admins and the agent
+  // keep every message -- nothing is removed from the record.
+  const hideThread = useMutation({
+    mutationFn: (conversationId: string) => api.hideConversation(conversationId),
+    onMutate: async (conversationId) => {
+      await queryClient.cancelQueries({ queryKey: ['admin', 'inbox'] });
+      const previous = queryClient.getQueryData<{
+        count: number;
+        results: InboxConversation[];
+      }>(['admin', 'inbox']);
+      queryClient.setQueryData<{ count: number; results: InboxConversation[] }>(
+        ['admin', 'inbox'],
+        (current) =>
+          current
+            ? {
+                count: Math.max(0, current.count - 1),
+                results: current.results.filter((c) => c.id !== conversationId),
+              }
+            : current,
+      );
+      return { previous };
+    },
+    onSuccess: (_result, conversationId) => {
+      haptics.success();
+      // The thread view cache is now stale for this admin.
+      queryClient.removeQueries({ queryKey: ['admin', 'thread', conversationId] });
+    },
+    onError: (_err, _id, context) => {
+      haptics.warn();
+      if (context?.previous) {
+        queryClient.setQueryData(['admin', 'inbox'], context.previous);
+      }
+      Alert.alert('Could not delete the chat', 'Check your signal and try again.');
+    },
+  });
+
+  function confirmDeleteThread(conversation: InboxConversation) {
+    haptics.tap();
+    Alert.alert(
+      `Delete chat with ${conversation.agent_name}?`,
+      'The whole conversation will be removed from your inbox only. The agent and other admins keep their copy, and the thread returns if the agent writes again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete chat',
+          style: 'destructive',
+          onPress: () => hideThread.mutate(conversation.id),
+        },
+      ],
+    );
+  }
 
   const needle = search.trim().toLowerCase();
   const conversations = (inbox.data?.results ?? []).filter(
@@ -689,6 +743,9 @@ export default function InboxScreen() {
                 haptics.tap();
                 setOpenThread(item);
               }}
+              onLongPress={() => confirmDeleteThread(item)}
+              delayLongPress={350}
+              accessibilityHint="Long press to delete this chat from your inbox"
             >
               <View style={[styles.avatar, { backgroundColor: palette.bg }]}>
                 <Text style={[styles.avatarText, { color: palette.fg }]}>

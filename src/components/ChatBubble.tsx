@@ -134,9 +134,19 @@ function ChatBubbleImpl({
           />
         </View>
       ) : null}
+      {/*
+        One Pressable handles the whole lifecycle. Long-press starts selection;
+        in selection mode a plain tap toggles. React Native suppresses onPress
+        after onLongPress has fired, so the release of the starting long-press
+        cannot immediately un-select the bubble -- which is exactly the bug an
+        overlay mounted mid-gesture used to cause.
+      */}
       <Pressable
         onLongPress={selectable && !selectionMode ? () => onToggleSelect?.(message.id) : undefined}
-        delayLongPress={350}
+        onPress={selectable && selectionMode ? () => onToggleSelect?.(message.id) : undefined}
+        delayLongPress={300}
+        accessibilityRole={selectionMode ? 'checkbox' : undefined}
+        accessibilityState={selectionMode ? { checked: selected } : undefined}
         style={[
           styles.bubble,
           own ? styles.bubbleOwn : styles.bubbleOther,
@@ -146,7 +156,22 @@ function ChatBubbleImpl({
         {!own ? <Text style={styles.senderName}>{message.sender_name}</Text> : null}
 
         {message.kind === 'IMAGE' && message.attachment?.url ? (
-          <Pressable onPress={() => setLightbox(true)} accessibilityRole="imagebutton">
+          <Pressable
+            // While selecting, a tap on the photo selects the message rather
+            // than opening the lightbox, so the two gestures never fight.
+            onPress={
+              selectionMode
+                ? selectable
+                  ? () => onToggleSelect?.(message.id)
+                  : undefined
+                : () => setLightbox(true)
+            }
+            onLongPress={
+              selectable && !selectionMode ? () => onToggleSelect?.(message.id) : undefined
+            }
+            delayLongPress={300}
+            accessibilityRole="imagebutton"
+          >
             <Image
               source={{ uri: message.attachment.url }}
               style={styles.image}
@@ -210,16 +235,6 @@ function ChatBubbleImpl({
           ) : null}
         </View>
       </Pressable>
-
-      {selectionMode ? (
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={selectable ? () => onToggleSelect?.(message.id) : undefined}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: selected, disabled: !selectable }}
-          accessibilityLabel="Select message"
-        />
-      ) : null}
 
       <Modal visible={lightbox} transparent animationType="fade">
         <Pressable style={styles.lightbox} onPress={() => setLightbox(false)}>

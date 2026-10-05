@@ -35,6 +35,7 @@ import {
   getBiometricRefreshToken,
   getRememberedEmail,
 } from '../src/api/tokens';
+import { LegalModal, type LegalDocument } from '../src/components/LegalModal';
 import { Banner } from '../src/components/ui';
 import { useAuth } from '../src/store/auth';
 import {
@@ -58,6 +59,7 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [canBiometric, setCanBiometric] = useState(false);
   const [biometricBusy, setBiometricBusy] = useState(false);
+  const [legalDoc, setLegalDoc] = useState<LegalDocument | null>(null);
 
   const passwordRef = useRef<TextInput>(null);
 
@@ -290,11 +292,36 @@ export default function LoginScreen() {
             Sentinel is an internal campaign tool. It is not an IEBC system and is
             not endorsed by the IEBC.
           </Animated.Text>
+
+          {/* The same documents the web Command Centre publishes, readable
+              before signing in and without a data bundle. */}
+          <Animated.View entering={FadeIn.delay(430)} style={styles.legalRow}>
+            <Pressable
+              onPress={() => setLegalDoc('privacy')}
+              hitSlop={HIT_SLOP}
+              accessibilityRole="link"
+              accessibilityLabel="Read the Privacy Policy"
+            >
+              <Text style={styles.legalLink}>Privacy Policy</Text>
+            </Pressable>
+            <Text style={styles.legalDivider}>{'\u00b7'}</Text>
+            <Pressable
+              onPress={() => setLegalDoc('terms')}
+              hitSlop={HIT_SLOP}
+              accessibilityRole="link"
+              accessibilityLabel="Read the Terms and Conditions"
+            >
+              <Text style={styles.legalLink}>Terms & Conditions</Text>
+            </Pressable>
+          </Animated.View>
+
           <Animated.Text entering={FadeIn.delay(460)} style={styles.copyright}>
             {`\u00A9 ${new Date().getFullYear()} Sentinel. All rights reserved.`}
           </Animated.Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {legalDoc ? <LegalModal document={legalDoc} onClose={() => setLegalDoc(null)} /> : null}
     </View>
   );
 }
@@ -342,13 +369,14 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     ...shadow.lg,
   },
-  cardTitle: { ...typography.title, color: colors.ink },
+  cardTitle: { ...typography.title, color: colors.ink, textAlign: 'center' },
   cardSubtitle: {
     ...typography.caption,
     color: colors.inkMuted,
     marginTop: spacing.xs,
     marginBottom: spacing.lg,
     lineHeight: 19,
+    textAlign: 'center',
   },
   errorWrap: { marginBottom: spacing.base },
   field: { marginBottom: spacing.base },
@@ -435,11 +463,26 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     lineHeight: 17,
   },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    minHeight: MIN_TOUCH,
+  },
+  legalLink: {
+    ...typography.caption,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+    textDecorationLine: 'underline',
+  },
+  legalDivider: { ...typography.caption, fontSize: 12, color: 'rgba(255,255,255,0.6)' },
   copyright: {
     ...typography.caption,
     fontSize: 11,
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
 });

@@ -50,6 +50,17 @@ import {
 import * as haptics from '../../src/services/haptics';
 import { HIT_SLOP, MIN_TOUCH, colors, radius, spacing, typography } from '../../src/theme';
 
+/**
+ * A key contact is a recognised office bearer -- the person the campaign
+ * actually calls. The server computes rank_weight (known offices are < 100,
+ * plain members 110) so the rank synonym map lives in one place.
+ */
+function isKeyContact(member: GroupMemberItem): boolean {
+  return typeof member.rank_weight === 'number'
+    ? member.rank_weight < 100
+    : member.rank.trim().toLowerCase() !== 'member';
+}
+
 const peopleKey = ['admin', 'people'] as const;
 const peopleStatsKey = ['admin', 'peopleStats'] as const;
 const groupsKey = ['admin', 'groups'] as const;
@@ -716,10 +727,18 @@ function GroupDetail({ group, onClose }: { group: SpecialGroupItem; onClose: () 
               />
             }
             renderItem={({ item }: { item: GroupMemberItem }) => (
-              <Card style={styles.personCard}>
+              <Card style={[styles.personCard, isKeyContact(item) && styles.keyContactCard]}>
                 <View style={styles.personRow}>
                   <View style={styles.personBody}>
-                    <Text style={styles.personName}>{item.full_name}</Text>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.personName}>{item.full_name}</Text>
+                      {isKeyContact(item) ? (
+                        <View style={styles.keyBadge}>
+                          <Ionicons name="star" size={10} color={colors.gold} />
+                          <Text style={styles.keyBadgeText}>KEY CONTACT</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text style={styles.personMeta}>
                       {item.rank}
                       {item.polling_centre_name ? ` · ${item.polling_centre_name}` : ''}
@@ -1082,6 +1101,23 @@ const styles = StyleSheet.create({
 
   list: { paddingHorizontal: spacing.base, gap: spacing.sm },
   personCard: { marginBottom: spacing.sm, paddingVertical: spacing.md },
+  keyContactCard: { borderColor: colors.goldLight, borderWidth: 1 },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  keyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.goldSurface,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  keyBadgeText: { ...typography.micro, fontSize: 9, color: colors.gold, letterSpacing: 0.5 },
   personRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   personBody: { flex: 1, gap: 2 },
   personName: { ...typography.bodyStrong, color: colors.ink },

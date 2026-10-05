@@ -217,6 +217,14 @@ export function hideMessages(ids: string[]) {
   });
 }
 
+/** "Delete chat for me": hides every message in one thread from this account. */
+export function hideConversation(conversationId: string) {
+  return apiRequest<{ hidden: number }>('/messages/hide/', {
+    method: 'POST',
+    body: { conversation: conversationId },
+  });
+}
+
 // --------------------------------------------------------------------------- //
 // Admin mode
 //

@@ -31,6 +31,7 @@ import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
 import { AnimatedNumber } from '../../src/components/AnimatedNumber';
 import { ElectionCountdown } from '../../src/components/ElectionCountdown';
 import { Card, SectionLabel, formatNumber, pressedStyle } from '../../src/components/ui';
+import { useAdminUnread } from '../../src/hooks/useChat';
 import { splitMs, useNow } from '../../src/hooks/useNow';
 import { useMe } from '../../src/hooks/useMe';
 import { useAuth } from '../../src/store/auth';
@@ -92,6 +93,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { fullName } = useMe();
   const { signOut } = useAuth();
+  const unread = useAdminUnread();
 
   const range = useMemo(() => {
     const now = new Date();
@@ -172,6 +174,31 @@ export default function AdminDashboard() {
       >
         {/* The campaign's clock: polls open 06:00, 10 Aug 2027 */}
         <ElectionCountdown />
+
+        {/* Agents waiting on an answer outrank everything below the clock. */}
+        {unread > 0 ? (
+          <Animated.View entering={FadeInDown.duration(240)}>
+            <Pressable
+              style={pressedStyle(styles.unreadBanner)}
+              onPress={() => router.navigate('/(app)/inbox')}
+              accessibilityRole="button"
+              accessibilityLabel={`${unread} unread messages from agents. Open the inbox.`}
+            >
+              <View style={styles.unreadIcon}>
+                <Ionicons name="chatbubbles" size={18} color={colors.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.unreadTitle}>
+                  {unread} unread message{unread === 1 ? '' : 's'}
+                </Text>
+                <Text style={styles.unreadHint}>
+                  Agents in the field are waiting for a reply
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.gold} />
+            </Pressable>
+          </Animated.View>
+        ) : null}
 
         {/* Next event spotlight */}
         {nextEvent ? (
@@ -283,6 +310,13 @@ export default function AdminDashboard() {
                 <View style={styles.actionIcon}>
                   <Ionicons name={icon} size={20} color={colors.green} />
                 </View>
+                {route === 'inbox' && unread > 0 ? (
+                  <View style={styles.actionBadge}>
+                    <Text style={styles.actionBadgeText}>
+                      {unread > 99 ? '99+' : unread}
+                    </Text>
+                  </View>
+                ) : null}
                 <Text style={styles.actionLabel}>{label}</Text>
                 <Text style={styles.actionHint}>{hint}</Text>
               </Pressable>
@@ -298,6 +332,27 @@ export default function AdminDashboard() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas },
   body: { padding: spacing.base, gap: spacing.md },
+
+  unreadBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.goldSurface,
+    borderColor: colors.goldLight,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  unreadIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadTitle: { ...typography.bodyStrong, fontSize: 14, color: colors.ink },
+  unreadHint: { ...typography.caption, fontSize: 11, color: colors.inkMuted },
 
   nextCard: { gap: spacing.sm, borderColor: colors.greenLight, borderWidth: 1 },
   nextTitle: { ...typography.heading, color: colors.ink },
@@ -363,6 +418,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.xs,
   },
+  actionBadge: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  actionBadgeText: { ...typography.micro, fontSize: 11, color: colors.white },
   actionLabel: { ...typography.bodyStrong, fontSize: 14, color: colors.ink },
   actionHint: { ...typography.caption, fontSize: 11, color: colors.inkFaint },
 });

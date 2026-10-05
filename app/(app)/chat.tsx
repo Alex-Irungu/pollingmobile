@@ -114,8 +114,12 @@ export default function ChatScreen() {
             const ids = [...selected];
             setSelected(new Set());
             hideMessages.mutate(ids, {
-              onError: () =>
-                setUploadError('Could not delete. Check your signal and try again.'),
+              onError: (err) =>
+                setUploadError(
+                  err instanceof ApiError && !err.isNetworkError
+                    ? err.message
+                    : 'Could not delete. Check your signal and try again.',
+                ),
             });
           },
         },

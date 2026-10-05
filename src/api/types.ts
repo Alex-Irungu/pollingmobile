@@ -347,6 +347,8 @@ export interface GroupMemberItem {
   phone_number: string;
   email: string;
   rank: string;
+  /** Server-computed: known office bearers are < 100, plain members 110. */
+  rank_weight: number;
   polling_centre: string | null;
   polling_centre_name: string | null;
   polling_centre_code: string | null;

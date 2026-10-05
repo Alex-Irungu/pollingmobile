@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   conversationQueryKey,
   messagesQueryKey,
+  useAdminUnread,
   useUnreadCount,
 } from '../../src/hooks/useChat';
 import { postingQueryKey } from '../../src/hooks/usePosting';
@@ -44,6 +45,9 @@ export default function AppLayout() {
   const router = useRouter();
   const { isAdmin, resolving } = useMe();
   const unread = useUnreadCount(!isAdmin);
+  // Unanswered agents must be visible from any admin screen, not just the
+  // inbox -- the badge rides the Dashboard tab because that is always on.
+  const adminUnread = useAdminUnread(isAdmin);
 
   // The offline submission queue retries on its own for as long as the agent
   // is signed in. When a queued result finally lands, My Station and History
@@ -187,6 +191,7 @@ export default function AppLayout() {
               size={size}
               color={color}
               focused={focused}
+              badgeCount={adminUnread}
             />
           ),
         }}
