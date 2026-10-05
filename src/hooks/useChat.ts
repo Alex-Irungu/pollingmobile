@@ -137,6 +137,36 @@ export function useSendMessage() {
   });
 }
 
+/**
+ * "Delete for me". Optimistic: the bubbles vanish at once and come back if the
+ * server refuses. Messages still pending in the outbox have no server id, so
+ * they are dropped from the request.
+ */
+export function useHideMessages() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (ids: string[]) => {
+      const real = ids.filter((id) => !id.startsWith('pending-'));
+      return real.length ? api.hideMessages(real) : Promise.resolve({ hidden: 0 });
+    },
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: messagesQueryKey });
+      const previous = queryClient.getQueryData<ChatMessage[]>(messagesQueryKey);
+      const gone = new Set(ids);
+      queryClient.setQueryData<ChatMessage[]>(messagesQueryKey, (current) =>
+        (current ?? []).filter((m) => !gone.has(m.id)),
+      );
+      return { previous };
+    },
+    onError: (_error, _ids, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(messagesQueryKey, context.previous);
+      }
+    },
+  });
+}
+
 export function useMarkRead() {
   const queryClient = useQueryClient();
 

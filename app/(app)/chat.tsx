@@ -48,7 +48,12 @@ import type { ChatMessage } from '../../src/api/types';
 import { ChatBubble } from '../../src/components/ChatBubble';
 import { Banner, EmptyState, LoadingState } from '../../src/components/ui';
 import { captureFormPhoto, pickFormPhoto } from '../../src/hooks/usePhoto';
-import { useMarkRead, useMessages, useSendMessage } from '../../src/hooks/useChat';
+import {
+  useHideMessages,
+  useMarkRead,
+  useMessages,
+  useSendMessage,
+} from '../../src/hooks/useChat';
 import { useOutbox } from '../../src/hooks/useOutbox';
 import { enqueueMessage } from '../../src/services/messageOutbox';
 import {
@@ -80,7 +85,43 @@ export default function ChatScreen() {
   const { data: messages, isLoading, error } = useMessages();
   const sendMessage = useSendMessage();
   const markRead = useMarkRead();
+  const hideMessages = useHideMessages();
   const outbox = useOutbox();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selecting = selected.size > 0;
+
+  const toggleSelect = useCallback((id: string) => {
+    Haptics.selectionAsync().catch(() => undefined);
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  function confirmDelete() {
+    const count = selected.size;
+    Alert.alert(
+      count === 1 ? 'Delete this message?' : `Delete ${count} messages?`,
+      'They will be removed from your phone only. The command centre keeps its copy.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const ids = [...selected];
+            setSelected(new Set());
+            hideMessages.mutate(ids, {
+              onError: () =>
+                setUploadError('Could not delete. Check your signal and try again.'),
+            });
+          },
+        },
+      ],
+    );
+  }
 
   /**
    * Server messages plus whatever is still waiting in the outbox, the latter
@@ -290,17 +331,41 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-        <View style={styles.headerIcon}>
-          <Ionicons name="headset" size={18} color={colors.white} />
+      {selecting ? (
+        <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+          <Pressable
+            onPress={() => setSelected(new Set())}
+            hitSlop={HIT_SLOP}
+            style={styles.selectAction}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel selection"
+          >
+            <Ionicons name="close" size={24} color={colors.white} />
+          </Pressable>
+          <Text style={[styles.headerTitle, styles.flex]}>{selected.size} selected</Text>
+          <Pressable
+            onPress={confirmDelete}
+            hitSlop={HIT_SLOP}
+            style={styles.selectAction}
+            accessibilityRole="button"
+            accessibilityLabel="Delete selected messages"
+          >
+            <Ionicons name="trash-outline" size={22} color={colors.white} />
+          </Pressable>
         </View>
-        <View style={styles.flex}>
-          <Text style={styles.headerTitle}>Command Centre</Text>
-          <Text style={styles.headerSubtitle}>
-            Whoever is on duty will answer
-          </Text>
+      ) : (
+        <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="headset" size={18} color={colors.white} />
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.headerTitle}>Command Centre</Text>
+            <Text style={styles.headerSubtitle}>
+              Whoever is on duty will answer
+            </Text>
+          </View>
         </View>
-      </View>
+      )}
 
       {error ? (
         <View style={styles.errorWrap}>
@@ -321,7 +386,15 @@ export default function ChatScreen() {
             ref={listRef}
             data={listData}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <ChatBubble message={item} />}
+            extraData={selected}
+            renderItem={({ item }) => (
+              <ChatBubble
+                message={item}
+                selectionMode={selecting}
+                selected={selected.has(item.id)}
+                onToggleSelect={toggleSelect}
+              />
+            )}
             contentContainerStyle={styles.list}
             onContentSizeChange={scrollToEnd}
             showsVerticalScrollIndicator={false}
@@ -417,6 +490,12 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  selectAction: {
+    width: MIN_TOUCH,
+    height: MIN_TOUCH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   root: { flex: 1, backgroundColor: colors.canvas },
   flex: { flex: 1 },
   header: {

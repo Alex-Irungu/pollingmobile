@@ -209,6 +209,14 @@ export function markMessagesRead() {
   return apiRequest<{ marked_read: number }>('/messages/read/', { method: 'POST' });
 }
 
+/** "Delete for me": hides the messages from this account only. */
+export function hideMessages(ids: string[]) {
+  return apiRequest<{ hidden: number }>('/messages/hide/', {
+    method: 'POST',
+    body: { ids },
+  });
+}
+
 // --------------------------------------------------------------------------- //
 // Admin mode
 //
@@ -338,7 +346,15 @@ export function fetchGroupCategories() {
   return apiRequest<{ value: string; label: string }[]>('/special-groups/categories/');
 }
 
-export function createGroup(payload: { name: string; category: string; description: string }) {
+export function createGroup(payload: {
+  name: string;
+  category: string;
+  description: string;
+  meeting_venue?: string;
+  county?: string | null;
+  constituency?: string | null;
+  ward?: string | null;
+}) {
   return apiRequest<SpecialGroupItem>('/special-groups/', {
     method: 'POST',
     body: payload,

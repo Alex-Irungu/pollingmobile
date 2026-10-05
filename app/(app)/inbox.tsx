@@ -131,6 +131,62 @@ function ThreadView({
 
   const messages = thread.data?.results ?? [];
 
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selecting = selected.size > 0;
+
+  function toggleSelect(id: string) {
+    haptics.tap();
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const hide = useMutation({
+    mutationFn: (ids: string[]) => api.hideMessages(ids),
+    onMutate: async (ids) => {
+      const key = ['admin', 'thread', conversation.id];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<typeof thread.data>(key);
+      const gone = new Set(ids);
+      queryClient.setQueryData<typeof thread.data>(key, (current) =>
+        current
+          ? { ...current, results: current.results.filter((m) => !gone.has(m.id)) }
+          : current,
+      );
+      return { previous };
+    },
+    onError: (_err, _ids, context) => {
+      haptics.warn();
+      if (context?.previous) {
+        queryClient.setQueryData(['admin', 'thread', conversation.id], context.previous);
+      }
+      Alert.alert('Could not delete', 'Check your signal and try again.');
+    },
+  });
+
+  function confirmDelete() {
+    const count = selected.size;
+    Alert.alert(
+      count === 1 ? 'Delete this message?' : `Delete ${count} messages?`,
+      'They will be removed from your view only. The agent and other admins keep their copy.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const ids = [...selected];
+            setSelected(new Set());
+            hide.mutate(ids);
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -138,9 +194,35 @@ function ThreadView({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={[styles.threadHeader, { paddingTop: insets.top + spacing.sm }]}>
+          {selecting ? (
+            <>
+              <Pressable
+                onPress={() => setSelected(new Set())}
+                hitSlop={HIT_SLOP}
+                style={styles.headerButton}
+                accessibilityLabel="Cancel selection"
+              >
+                <Ionicons name="close" size={22} color={colors.ink} />
+              </Pressable>
+              <View style={styles.threadHeaderBody}>
+                <Text style={styles.threadName}>{selected.size} selected</Text>
+              </View>
+              <Pressable
+                onPress={confirmDelete}
+                hitSlop={HIT_SLOP}
+                style={styles.headerButton}
+                accessibilityLabel="Delete selected messages"
+              >
+                <Ionicons name="trash-outline" size={22} color={colors.flagged} />
+              </Pressable>
+            </>
+          ) : null}
+          {!selecting ? (
           <Pressable onPress={onClose} hitSlop={HIT_SLOP} style={styles.headerButton}>
             <Ionicons name="chevron-back" size={22} color={colors.ink} />
           </Pressable>
+          ) : null}
+          {!selecting ? (
           <View style={styles.threadHeaderBody}>
             <Text style={styles.threadName} numberOfLines={1}>
               {conversation.agent_name}
@@ -151,7 +233,8 @@ function ThreadView({
               </Text>
             ) : null}
           </View>
-          {conversation.agent_phone ? (
+          ) : null}
+          {!selecting && conversation.agent_phone ? (
             <Pressable
               onPress={() =>
                 Linking.openURL(`tel:${conversation.agent_phone}`).catch(() => undefined)
@@ -172,6 +255,7 @@ function ThreadView({
             ref={listRef}
             data={messages}
             keyExtractor={(m) => m.id}
+            extraData={selected}
             contentContainerStyle={styles.threadList}
             onContentSizeChange={() =>
               listRef.current?.scrollToEnd({ animated: false })
@@ -180,10 +264,27 @@ function ThreadView({
               // from_agent=true means the field agent wrote it; our own
               // (command centre) messages sit on the right in brand green.
               const mine = !item.from_agent;
+              const isSelected = selected.has(item.id);
               return (
-                <View
-                  style={[styles.bubbleRow, mine ? styles.bubbleRowMine : null]}
+                <Pressable
+                  onLongPress={selecting ? undefined : () => toggleSelect(item.id)}
+                  onPress={selecting ? () => toggleSelect(item.id) : undefined}
+                  delayLongPress={350}
+                  style={[
+                    styles.bubbleRow,
+                    mine ? styles.bubbleRowMine : null,
+                    isSelected && { backgroundColor: colors.greenSurface },
+                  ]}
                 >
+                  {selecting ? (
+                    <View style={{ justifyContent: 'center', marginRight: spacing.sm }}>
+                      <Ionicons
+                        name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={22}
+                        color={isSelected ? colors.green : colors.inkFaint}
+                      />
+                    </View>
+                  ) : null}
                   <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
                     {!mine && item.sender_name ? (
                       <Text style={styles.bubbleSender}>{item.sender_name}</Text>
@@ -201,7 +302,7 @@ function ThreadView({
                       {fmtWhen(item.created_at)}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               );
             }}
           />

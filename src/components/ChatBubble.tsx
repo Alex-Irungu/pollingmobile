@@ -86,11 +86,27 @@ function AudioBubble({ url, durationMs }: { url: string; durationMs: number | nu
   );
 }
 
-function ChatBubbleImpl({ message }: { message: ChatMessage }) {
+interface ChatBubbleProps {
+  message: ChatMessage;
+  /** True while the user is picking messages to delete. */
+  selectionMode?: boolean;
+  selected?: boolean;
+  /** Long-press (to start) and tap-while-selecting (to toggle). */
+  onToggleSelect?: (id: string) => void;
+}
+
+function ChatBubbleImpl({
+  message,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
+}: ChatBubbleProps) {
   const [lightbox, setLightbox] = useState(false);
   const own = message.from_agent;
   // An optimistic bubble, not yet acknowledged by the server.
   const pending = message.id.startsWith('pending-');
+  // Outbox rows have no server id yet, so there is nothing to delete.
+  const selectable = !!onToggleSelect && !pending;
 
   if (message.kind === 'SYSTEM') {
     return (
@@ -103,9 +119,24 @@ function ChatBubbleImpl({ message }: { message: ChatMessage }) {
   return (
     <Animated.View
       entering={own ? FadeInRight.duration(200) : FadeInLeft.duration(200)}
-      style={[styles.row, own ? styles.rowOwn : styles.rowOther]}
+      style={[
+        styles.row,
+        own ? styles.rowOwn : styles.rowOther,
+        selected && styles.rowSelected,
+      ]}
     >
-      <View
+      {selectionMode ? (
+        <View style={styles.checkWrap} pointerEvents="none">
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={22}
+            color={selected ? colors.green : pending ? colors.line : colors.inkFaint}
+          />
+        </View>
+      ) : null}
+      <Pressable
+        onLongPress={selectable && !selectionMode ? () => onToggleSelect?.(message.id) : undefined}
+        delayLongPress={350}
         style={[
           styles.bubble,
           own ? styles.bubbleOwn : styles.bubbleOther,
@@ -178,7 +209,17 @@ function ChatBubbleImpl({ message }: { message: ChatMessage }) {
             )
           ) : null}
         </View>
-      </View>
+      </Pressable>
+
+      {selectionMode ? (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={selectable ? () => onToggleSelect?.(message.id) : undefined}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: selected, disabled: !selectable }}
+          accessibilityLabel="Select message"
+        />
+      ) : null}
 
       <Modal visible={lightbox} transparent animationType="fade">
         <Pressable style={styles.lightbox} onPress={() => setLightbox(false)}>
@@ -207,7 +248,9 @@ export const ChatBubble = React.memo(ChatBubbleImpl, (prev, next) => {
   // on every single poll tick.
   return (
     prev.message.id === next.message.id &&
-    prev.message.read_at === next.message.read_at
+    prev.message.read_at === next.message.read_at &&
+    prev.selectionMode === next.selectionMode &&
+    prev.selected === next.selected
   );
 });
 
@@ -215,6 +258,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', marginBottom: spacing.sm, paddingHorizontal: spacing.md },
   rowOwn: { justifyContent: 'flex-end' },
   rowOther: { justifyContent: 'flex-start' },
+  rowSelected: { backgroundColor: colors.greenSurface },
+  checkWrap: {
+    position: 'absolute',
+    left: spacing.md,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   bubble: {
     maxWidth: '82%',
     borderRadius: radius.lg,

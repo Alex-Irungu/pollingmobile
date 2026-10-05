@@ -33,7 +33,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as api from '../../src/api/endpoints';
-import type { GroupMemberItem, Person, SpecialGroupItem } from '../../src/api/types';
+import type { GeoUnit, GroupMemberItem, Person, SpecialGroupItem } from '../../src/api/types';
 import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
 import { Button } from '../../src/components/Button';
 import { CentrePicker, type PickedCentre } from '../../src/components/CentrePicker';
@@ -240,6 +240,312 @@ function PersonForm({
             setPickerOpen(false);
           }}
         />
+      </View>
+    </Modal>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Small single-choice picker, used by the group form's area cascade
+// --------------------------------------------------------------------------- //
+
+function OptionPicker<T extends { id: string; name: string }>({
+  title,
+  options,
+  onSelect,
+  onClose,
+  allowNone,
+}: {
+  title: string;
+  options: T[];
+  onSelect: (option: T | null) => void;
+  onClose: () => void;
+  allowNone?: boolean;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.formRoot, { paddingTop: insets.top }]}>
+        <View style={styles.formHeader}>
+          <Text style={styles.formTitle}>{title}</Text>
+          <Pressable onPress={onClose} hitSlop={HIT_SLOP}>
+            <Ionicons name="close" size={24} color={colors.inkMuted} />
+          </Pressable>
+        </View>
+        <FlatList
+          data={options}
+          keyExtractor={(o) => o.id}
+          contentContainerStyle={[styles.formBody, { paddingBottom: insets.bottom + spacing.xl }]}
+          ListHeaderComponent={
+            allowNone ? (
+              <Pressable style={styles.optionRow} onPress={() => onSelect(null)}>
+                <Text style={[styles.optionText, { color: colors.inkMuted }]}>Not set</Text>
+              </Pressable>
+            ) : null
+          }
+          renderItem={({ item }) => (
+            <Pressable style={styles.optionRow} onPress={() => onSelect(item)}>
+              <Text style={styles.optionText}>{item.name}</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.inkFaint} />
+            </Pressable>
+          )}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Group create form -- same fields as the web dialog: name and category are
+// required, the area (county > constituency > ward) and venue are optional.
+// --------------------------------------------------------------------------- //
+
+function GroupForm({ onClose }: { onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('BUSINESS');
+  const [description, setDescription] = useState('');
+  const [venue, setVenue] = useState('');
+  const [county, setCounty] = useState<GeoUnit | null>(null);
+  const [constituency, setConstituency] = useState<GeoUnit | null>(null);
+  const [ward, setWard] = useState<GeoUnit | null>(null);
+  const [picking, setPicking] = useState<'county' | 'constituency' | 'ward' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const categories = useQuery({
+    queryKey: ['admin', 'groupCategories'],
+    queryFn: api.fetchGroupCategories,
+    staleTime: Infinity,
+  });
+  const counties = useQuery({
+    queryKey: ['geo', 'counties'],
+    queryFn: api.fetchCounties,
+    staleTime: Infinity,
+  });
+  const constituencies = useQuery({
+    queryKey: ['geo', 'constituencies', county?.id],
+    queryFn: () => api.fetchConstituencies(county!.id),
+    enabled: !!county,
+    staleTime: Infinity,
+  });
+  const wards = useQuery({
+    queryKey: ['geo', 'wards', constituency?.id],
+    queryFn: () => api.fetchWards(constituency!.id),
+    enabled: !!constituency,
+    staleTime: Infinity,
+  });
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.createGroup({
+        name: name.trim(),
+        category,
+        description: description.trim(),
+        meeting_venue: venue.trim(),
+        // Send only what was chosen; the API backfills the parent levels.
+        ward: ward?.id ?? null,
+        constituency: constituency?.id ?? null,
+        county: county?.id ?? null,
+      }),
+    onSuccess: () => {
+      haptics.success();
+      queryClient.invalidateQueries({ queryKey: groupsKey });
+      onClose();
+    },
+    onError: (err: Error) => {
+      haptics.warn();
+      setError(err.message);
+    },
+  });
+
+  function AreaRow({
+    label,
+    value,
+    disabled,
+    onPress,
+    onClear,
+  }: {
+    label: string;
+    value: GeoUnit | null;
+    disabled?: boolean;
+    onPress: () => void;
+    onClear: () => void;
+  }) {
+    return (
+      <View>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <Pressable
+          style={[styles.areaRow, disabled && { opacity: 0.5 }]}
+          onPress={onPress}
+          disabled={disabled}
+        >
+          <Text style={[styles.areaValue, !value && { color: colors.inkFaint }]}>
+            {value?.name ?? 'Not set'}
+          </Text>
+          {value ? (
+            <Pressable onPress={onClear} hitSlop={HIT_SLOP} accessibilityLabel={`Clear ${label}`}>
+              <Ionicons name="close-circle" size={18} color={colors.inkFaint} />
+            </Pressable>
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={colors.inkFaint} />
+          )}
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.formRoot, { paddingTop: insets.top }]}>
+        <View style={styles.formHeader}>
+          <Text style={styles.formTitle}>New special group</Text>
+          <Pressable onPress={onClose} hitSlop={HIT_SLOP}>
+            <Ionicons name="close" size={24} color={colors.inkMuted} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={[
+            styles.formBody,
+            { paddingBottom: insets.bottom + spacing.xxl },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.fieldLabel}>Name</Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Kiharu Business Community"
+            placeholderTextColor={colors.inkFaint}
+          />
+
+          <Text style={styles.fieldLabel}>Category</Text>
+          <View style={styles.chipWrap}>
+            {(categories.data ?? []).map((option) => {
+              const active = category === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setCategory(option.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={styles.fieldLabel}>Description (optional)</Text>
+          <TextInput
+            style={[styles.input, styles.multiline]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="What this group is and why it matters to the campaign."
+            placeholderTextColor={colors.inkFaint}
+            multiline
+          />
+
+          <AreaRow
+            label="County (optional)"
+            value={county}
+            onPress={() => setPicking('county')}
+            onClear={() => {
+              setCounty(null);
+              setConstituency(null);
+              setWard(null);
+            }}
+          />
+          <AreaRow
+            label="Constituency"
+            value={constituency}
+            disabled={!county}
+            onPress={() => setPicking('constituency')}
+            onClear={() => {
+              setConstituency(null);
+              setWard(null);
+            }}
+          />
+          <AreaRow
+            label="Ward"
+            value={ward}
+            disabled={!constituency}
+            onPress={() => setPicking('ward')}
+            onClear={() => setWard(null)}
+          />
+
+          <Text style={styles.fieldLabel}>Meeting venue (optional)</Text>
+          <TextInput
+            style={styles.input}
+            value={venue}
+            onChangeText={setVenue}
+            placeholder="Where the group normally meets"
+            placeholderTextColor={colors.inkFaint}
+          />
+
+          {error ? <Banner tone="error" message={error} /> : null}
+
+          <View style={{ marginTop: spacing.lg }}>
+            <Button
+              label="Create group"
+              onPress={() => {
+                setError(null);
+                if (!name.trim()) {
+                  setError('A name is required.');
+                  return;
+                }
+                save.mutate();
+              }}
+              loading={save.isPending}
+            />
+          </View>
+        </ScrollView>
+
+        {picking === 'county' ? (
+          <OptionPicker
+            title="Pick a county"
+            options={counties.data ?? []}
+            onClose={() => setPicking(null)}
+            onSelect={(picked) => {
+              setCounty(picked);
+              setConstituency(null);
+              setWard(null);
+              setPicking(null);
+            }}
+            allowNone
+          />
+        ) : null}
+        {picking === 'constituency' ? (
+          <OptionPicker
+            title="Pick a constituency"
+            options={constituencies.data ?? []}
+            onClose={() => setPicking(null)}
+            onSelect={(picked) => {
+              setConstituency(picked);
+              setWard(null);
+              setPicking(null);
+            }}
+            allowNone
+          />
+        ) : null}
+        {picking === 'ward' ? (
+          <OptionPicker
+            title="Pick a ward"
+            options={wards.data ?? []}
+            onClose={() => setPicking(null)}
+            onSelect={(picked) => {
+              setWard(picked);
+              setPicking(null);
+            }}
+            allowNone
+          />
+        ) : null}
       </View>
     </Modal>
   );
@@ -463,6 +769,7 @@ export default function PeopleScreen() {
     editing: null,
   });
   const [openGroup, setOpenGroup] = useState<SpecialGroupItem | null>(null);
+  const [groupFormOpen, setGroupFormOpen] = useState(false);
 
   // One unfiltered fetch, searched in memory: every keystroke matches
   // instantly against name, phone, email, polling centre and notes, with no
@@ -523,7 +830,13 @@ export default function PeopleScreen() {
               label="Register"
               onPress={() => setPersonForm({ open: true, editing: null })}
             />
-          ) : undefined
+          ) : (
+            <HeaderAction
+              icon="add-circle"
+              label="New group"
+              onPress={() => setGroupFormOpen(true)}
+            />
+          )
         }
       />
 
@@ -668,8 +981,9 @@ export default function PeopleScreen() {
           ListEmptyComponent={
             <EmptyState
               title="No groups yet"
-              message="Create groups in the web Command Centre, then add members here from the ground."
+              message="Create the first group -- boda riders, chamas, church groups -- then add members from the ground."
               icon={<Ionicons name="people-circle-outline" size={40} color={colors.inkFaint} />}
+              action={{ label: 'Create a group', onPress: () => setGroupFormOpen(true) }}
             />
           }
           renderItem={({ item }) => (
@@ -708,6 +1022,7 @@ export default function PeopleScreen() {
         />
       ) : null}
       {openGroup ? <GroupDetail group={openGroup} onClose={() => setOpenGroup(null)} /> : null}
+      {groupFormOpen ? <GroupForm onClose={() => setGroupFormOpen(false)} /> : null}
     </View>
   );
 }
@@ -819,6 +1134,53 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
+
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  chip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  chipActive: { backgroundColor: colors.greenSurface, borderColor: colors.green },
+  chipText: { ...typography.label, color: colors.inkMuted },
+  chipTextActive: { color: colors.green },
+
+  areaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    minHeight: MIN_TOUCH,
+    marginTop: spacing.xs,
+  },
+  areaValue: { ...typography.body, color: colors.ink, flex: 1 },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    minHeight: MIN_TOUCH,
+    marginBottom: spacing.sm,
+  },
+  optionText: { ...typography.body, color: colors.ink },
 
   centrePickButton: {
     flexDirection: 'row',
