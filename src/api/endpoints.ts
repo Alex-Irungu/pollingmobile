@@ -15,6 +15,7 @@ import type {
   AdminEventInput,
   AgentListItem,
   AgentPosting,
+  CheckInInfo,
   Attachment,
   ChatMessage,
   ConversationInfo,
@@ -88,6 +89,17 @@ export function fetchPosting() {
 /** The signed-in agent's own submission history, most recent first. */
 export function fetchSubmissionHistory() {
   return apiRequest<SubmissionHistoryResponse>('/agents/me/submissions/');
+}
+
+/**
+ * Record arrival at the polling station. Idempotent on the server: a repeat
+ * the same day returns the original record, so a retry is always safe.
+ */
+export function checkIn(latitude: number, longitude: number) {
+  return apiRequest<CheckInInfo & { already_checked_in: boolean }>(
+    '/agents/me/check-in/',
+    { method: 'POST', body: { latitude, longitude } },
+  );
 }
 
 /**

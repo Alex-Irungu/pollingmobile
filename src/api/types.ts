@@ -85,6 +85,17 @@ export interface AgentPosting {
   race: RaceInfo | null;
   candidates: BallotCandidate[];
   existing_submission: ExistingSubmission | null;
+  /** Today's arrival check-in, or null if the agent has not checked in. */
+  check_in?: CheckInInfo | null;
+}
+
+export interface CheckInInfo {
+  id: string;
+  checked_in_at: string;
+  /** Within ~300 m of the station's coordinates. */
+  verified: boolean;
+  /** Metres from the station; null when the station has no coordinates. */
+  distance_m: number | null;
 }
 
 export interface Attachment {

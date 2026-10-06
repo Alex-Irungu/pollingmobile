@@ -37,6 +37,7 @@ import {
   StatusPill,
   formatNumber,
 } from '../../src/components/ui';
+import { CheckInCard } from '../../src/components/CheckInCard';
 import { DayChecklist } from '../../src/components/DayChecklist';
 import { ElectionCountdown } from '../../src/components/ElectionCountdown';
 import { LiveTallyCard } from '../../src/components/LiveTallyCard';
@@ -246,6 +247,12 @@ export default function MyStationScreen() {
               title="No station assigned yet"
               message="You are registered, but the command centre has not posted you to a polling stream. You cannot submit results until they do."
             />
+          </View>
+        ) : null}
+
+        {station ? (
+          <View style={styles.block}>
+            <CheckInCard checkIn={data?.check_in} />
           </View>
         ) : null}
 
