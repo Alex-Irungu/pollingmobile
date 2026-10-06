@@ -153,7 +153,17 @@ function ChatBubbleImpl({
           pending && styles.bubblePending,
         ]}
       >
-        {!own ? <Text style={styles.senderName}>{message.sender_name}</Text> : null}
+        {message.priority === 'EMERGENCY' || message.priority === 'URGENT' ? (
+        <Text
+          style={[
+            styles.priorityTag,
+            message.priority === 'EMERGENCY' && styles.priorityTagEmergency,
+          ]}
+        >
+          {message.priority === 'EMERGENCY' ? 'EMERGENCY' : 'URGENT'}
+        </Text>
+      ) : null}
+      {!own ? <Text style={styles.senderName}>{message.sender_name}</Text> : null}
 
         {message.kind === 'IMAGE' && message.attachment?.url ? (
           <Pressable
@@ -270,6 +280,20 @@ export const ChatBubble = React.memo(ChatBubbleImpl, (prev, next) => {
 });
 
 const styles = StyleSheet.create({
+  priorityTag: {
+    alignSelf: 'flex-start',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: colors.white,
+    backgroundColor: colors.pending,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  priorityTagEmergency: { backgroundColor: colors.rejected },
   row: { flexDirection: 'row', marginBottom: spacing.sm, paddingHorizontal: spacing.md },
   rowOwn: { justifyContent: 'flex-end' },
   rowOther: { justifyContent: 'flex-start' },

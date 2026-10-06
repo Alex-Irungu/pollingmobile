@@ -74,18 +74,27 @@ export default function AppLayout() {
   }, [queryClient, isAdmin]);
 
   // Pushes: register this device once signed in, and make tapping a
-  // notification land on the conversation it announced. Agent-only -- the
-  // push token endpoint lives under /agents/me/ and 403s for staff.
+  // notification land on what it announced. Agents get their chat; staff get
+  // the dashboard for an emergency (where it can be acknowledged) or the
+  // inbox for anything else. Staff register too, so a panic alert reaches a
+  // command-centre phone with the app closed.
   useEffect(() => {
-    if (isAdmin) return;
+    if (resolving) return;
     void registerForPushNotifications();
-    const sub = Notifications.addNotificationResponseReceivedListener(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as { type?: string } | undefined;
+      if (isAdmin) {
+        queryClient.invalidateQueries({ queryKey: ['admin', 'emergencies'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
+        router.navigate(data?.type === 'emergency' ? '/(app)/admin' : '/(app)/inbox');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: messagesQueryKey });
       queryClient.invalidateQueries({ queryKey: conversationQueryKey });
       router.navigate('/(app)/chat');
     });
     return () => sub.remove();
-  }, [queryClient, router, isAdmin]);
+  }, [queryClient, router, isAdmin, resolving]);
 
   // Android's 3-button and gesture nav bars both live in this inset. Without
   // adding it to the tab bar's height/padding, the bar renders *behind* the

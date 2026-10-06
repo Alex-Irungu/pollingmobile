@@ -50,6 +50,16 @@ export async function registerForPushNotifications(): Promise<void> {
         vibrationPattern: [0, 250, 250, 250],
         sound: 'default',
       });
+      // Emergencies and urgent broadcasts: the loudest thing this app does.
+      // Must match the channelId the backend sends (common.push / services.emergency).
+      await Notifications.setNotificationChannelAsync('emergency', {
+        name: 'Emergencies and urgent alerts',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 250, 500, 250, 500],
+        sound: 'default',
+        bypassDnd: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
     }
 
     const existing = await Notifications.getPermissionsAsync();

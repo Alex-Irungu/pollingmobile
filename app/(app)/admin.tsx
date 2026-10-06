@@ -8,7 +8,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
@@ -30,8 +30,10 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { AdminHeader, HeaderAction } from '../../src/components/AdminHeader';
 import { AnimatedNumber } from '../../src/components/AnimatedNumber';
 import { ElectionCountdown } from '../../src/components/ElectionCountdown';
+import { EmergencyPanel } from '../../src/components/EmergencyPanel';
 import { Card, SectionLabel, formatNumber, pressedStyle } from '../../src/components/ui';
 import { useAdminUnread } from '../../src/hooks/useChat';
+import { emergenciesQueryKey } from '../../src/hooks/useEmergencies';
 import { splitMs, useNow } from '../../src/hooks/useNow';
 import { useMe } from '../../src/hooks/useMe';
 import { useAuth } from '../../src/store/auth';
@@ -94,6 +96,7 @@ export default function AdminDashboard() {
   const { fullName } = useMe();
   const { signOut } = useAuth();
   const unread = useAdminUnread();
+  const queryClient = useQueryClient();
 
   const range = useMemo(() => {
     const now = new Date();
@@ -167,11 +170,15 @@ export default function AdminDashboard() {
             onRefresh={() => {
               void events.refetch();
               void peopleStats.refetch();
+              void queryClient.invalidateQueries({ queryKey: emergenciesQueryKey });
             }}
             tintColor={colors.green}
           />
         }
       >
+        {/* A panic alert outranks everything, including the clock. */}
+        <EmergencyPanel />
+
         {/* The campaign's clock: polls open 06:00, 10 Aug 2027 */}
         <ElectionCountdown />
 

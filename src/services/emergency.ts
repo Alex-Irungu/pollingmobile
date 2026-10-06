@@ -98,7 +98,12 @@ export async function sendEmergencyAlert(station: {
     api.updateMyLocation(position.lat, position.lng).catch(() => undefined);
   }
 
-  const clientUuid = await enqueueMessage({ body, tag: 'emergency' });
+  const clientUuid = await enqueueMessage({
+    body,
+    tag: 'emergency',
+    latitude: position?.lat,
+    longitude: position?.lng,
+  });
 
   // Track this entry until it leaves the outbox, one way or the other.
   const unsubscribe = onOutboxEvent((event) => {

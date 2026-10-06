@@ -21,6 +21,7 @@ import type {
   EventSaveResult,
   GeoUnit,
   GroupMemberItem,
+  EmergencyAlert,
   InboxConversation,
   LiveTally,
   LoginResponse,
@@ -201,6 +202,10 @@ export function sendMessage(payload: {
   attachment_id?: string;
   client_uuid: string;
   submission_id?: string;
+  /** Panic button: the server raises an Emergency record and alerts staff. */
+  emergency?: boolean;
+  latitude?: number;
+  longitude?: number;
 }) {
   return apiRequest<ChatMessage>('/messages/', { method: 'POST', body: payload });
 }
@@ -420,11 +425,31 @@ export function sendBroadcast(payload: {
   audience: 'ALL_AGENTS' | 'AGENTS' | 'GROUPS';
   agent_ids?: string[];
   group_ids?: string[];
+  /** Louder push and an URGENT tag in each agent's thread. */
+  urgent?: boolean;
 }) {
   return apiRequest<{ id: string; delivered_in_app: number; sms_pending: number }>(
     '/messages/broadcasts/',
     { method: 'POST', body: payload },
   );
+}
+
+export function fetchEmergencies(scope: 'active' | 'all' = 'active') {
+  return apiRequest<{ active_count: number; results: EmergencyAlert[] }>(
+    `/alerts/emergencies/?scope=${scope}`,
+  );
+}
+
+/** Moves forward only: acknowledge, then dispatch, then resolve. */
+export function setEmergencyStatus(
+  id: string,
+  status: 'ACKNOWLEDGED' | 'DISPATCHED' | 'RESOLVED',
+  note?: string,
+) {
+  return apiRequest<EmergencyAlert>(`/alerts/emergencies/${id}/status/`, {
+    method: 'POST',
+    body: { status, note },
+  });
 }
 
 export function sendThreadMessage(

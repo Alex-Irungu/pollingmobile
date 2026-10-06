@@ -359,6 +359,7 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
   const [agentIds, setAgentIds] = useState<Set<string>>(new Set());
   const [groupIds, setGroupIds] = useState<Set<string>>(new Set());
   const [pickerSearch, setPickerSearch] = useState('');
+  const [urgent, setUrgent] = useState(false);
 
   const agents = useQuery({
     queryKey: ['admin', 'agents'],
@@ -380,6 +381,7 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
         audience,
         agent_ids: audience === 'AGENTS' ? [...agentIds] : undefined,
         group_ids: audience === 'GROUPS' ? [...groupIds] : undefined,
+        urgent: urgent || undefined,
       }),
     onSuccess: (result) => {
       haptics.success();
@@ -391,13 +393,31 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
           `${result.sms_pending} group member${result.sms_pending === 1 ? ' has' : 's have'} no app account \u2014 reachable by SMS once the SMS gateway is connected.`,
         );
       }
-      Alert.alert('Message sent', lines.join('\n\n'));
+      Alert.alert(urgent ? 'Urgent message sent' : 'Message sent', lines.join('\n\n'));
     },
     onError: (err: Error) => {
       haptics.warn();
       Alert.alert('Could not send', err.message);
     },
   });
+
+  // An urgent broadcast rings every phone on the loudest channel, so it is
+  // confirmed once; an ordinary one sends straight away.
+  function confirmSend() {
+    if (!urgent) {
+      send.mutate();
+      return;
+    }
+    haptics.tap();
+    Alert.alert(
+      'Send as URGENT?',
+      'Agents\u2019 phones will sound the emergency alert. Use this for things that cannot wait.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Send urgent', style: 'destructive', onPress: () => send.mutate() },
+      ],
+    );
+  }
 
   function toggle(set: Set<string>, id: string, apply: (next: Set<string>) => void) {
     const next = new Set(set);
@@ -448,6 +468,27 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
       <Text style={styles.charCount}>
         {body.length}/{BROADCAST_MAX}
       </Text>
+
+      <Pressable
+        style={[styles.urgentRow, urgent && styles.urgentRowActive]}
+        onPress={() => setUrgent((v) => !v)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: urgent }}
+      >
+        <Ionicons
+          name={urgent ? 'checkbox' : 'square-outline'}
+          size={20}
+          color={urgent ? colors.rejected : colors.inkFaint}
+        />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.audienceLabel, urgent && { color: colors.rejected }]}>
+            Mark as urgent
+          </Text>
+          <Text style={styles.audienceHint}>
+            Loud alert on every phone, even in silent mode
+          </Text>
+        </View>
+      </Pressable>
 
       <Text style={styles.fieldLabel}>Send to</Text>
       <View style={styles.audienceColumn}>
@@ -591,7 +632,7 @@ function BroadcastComposer({ onClose }: { onClose: () => void }) {
           <Text style={styles.selectionSummary}>{selectionSummary}</Text>
           <Button
             label={send.isPending ? 'Sending\u2026' : 'Send message'}
-            onPress={() => send.mutate()}
+            onPress={confirmSend}
             loading={send.isPending}
             disabled={!canSend}
           />
@@ -738,7 +779,7 @@ export default function InboxScreen() {
             const palette = avatarColour(item.agent_name);
             return (
             <Pressable
-              style={pressedStyle(styles.convRow)}
+              style={pressedStyle(styles.convRow, item.has_emergency && styles.convRowEmergency)}
               onPress={() => {
                 haptics.tap();
                 setOpenThread(item);
@@ -764,6 +805,12 @@ export default function InboxScreen() {
                   </Text>
                   <Text style={styles.convWhen}>{fmtWhen(item.last_message_at)}</Text>
                 </View>
+                {item.has_emergency ? (
+                  <View style={styles.sosTag}>
+                    <Ionicons name="warning" size={11} color={colors.white} />
+                    <Text style={styles.sosTagText}>EMERGENCY</Text>
+                  </View>
+                ) : null}
                 {item.polling_station ? (
                   <Text style={styles.convStation} numberOfLines={1}>
                     {item.polling_station}
@@ -828,6 +875,31 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     marginTop: spacing.xs,
   },
+  urgentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+  },
+  urgentRowActive: { borderColor: colors.rejected, backgroundColor: colors.rejectedSurface },
+  convRowEmergency: { backgroundColor: colors.rejectedSurface },
+  sosTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 3,
+    backgroundColor: colors.rejected,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  sosTagText: { ...typography.micro, fontSize: 9, color: colors.white, letterSpacing: 0.5 },
   charCount: {
     ...typography.caption,
     fontSize: 11,

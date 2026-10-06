@@ -34,6 +34,9 @@ export interface OutboxEntry {
   body: string;
   /** Emergency entries jump the queue and get reported if they fail. */
   tag: 'chat' | 'emergency';
+  /** Where the agent was when they pressed the button, if known. */
+  latitude?: number;
+  longitude?: number;
   queuedAt: string;
   lastError: string | null;
 }
@@ -129,6 +132,8 @@ export async function enqueueMessage(input: {
   body: string;
   tag: OutboxEntry['tag'];
   clientUuid?: string;
+  latitude?: number;
+  longitude?: number;
 }): Promise<string> {
   await load();
 
@@ -136,6 +141,8 @@ export async function enqueueMessage(input: {
     clientUuid: input.clientUuid ?? newUuid(),
     body: input.body,
     tag: input.tag,
+    latitude: input.latitude,
+    longitude: input.longitude,
     queuedAt: new Date().toISOString(),
     lastError: null,
   };
@@ -185,6 +192,11 @@ async function doFlush(): Promise<void> {
         kind: 'TEXT',
         body: entry.body,
         client_uuid: entry.clientUuid,
+        // Entries persisted by older builds carry no flag, but the tag still
+        // says what they are.
+        ...(entry.tag === 'emergency'
+          ? { emergency: true, latitude: entry.latitude, longitude: entry.longitude }
+          : {}),
       });
       entries = entries.slice(1);
       await save();

@@ -172,10 +172,14 @@ export interface LiveTally {
 
 export type MessageKind = 'TEXT' | 'IMAGE' | 'AUDIO' | 'SYSTEM';
 
+export type MessagePriority = 'NORMAL' | 'URGENT' | 'EMERGENCY';
+
 export interface ChatMessage {
   id: string;
   kind: MessageKind;
   body: string;
+  /** Set by the server; older builds of the API omit it. */
+  priority?: MessagePriority;
   attachment: Attachment | null;
   from_agent: boolean;
   sender_name: string;
@@ -397,6 +401,35 @@ export interface InboxConversation {
   last_message_at: string | null;
   last_message_preview: string;
   unread: number;
+  /** True while an unresolved panic alert sits in this thread. */
+  has_emergency?: boolean;
+}
+
+export type EmergencyStatus = 'OPEN' | 'ACKNOWLEDGED' | 'DISPATCHED' | 'RESOLVED';
+
+/** A panic-button alert and how far the response has got. */
+export interface EmergencyAlert {
+  id: string;
+  status: EmergencyStatus;
+  status_display: string;
+  is_active: boolean;
+  agent_id: string;
+  agent_name: string;
+  agent_phone: string;
+  polling_station: string | null;
+  conversation_id: string;
+  message: string;
+  latitude: number | null;
+  longitude: number | null;
+  map_url: string | null;
+  created_at: string;
+  acknowledged_by: string | null;
+  acknowledged_at: string | null;
+  dispatched_by: string | null;
+  dispatched_at: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  note: string;
 }
 
 export interface ThreadResponse {
