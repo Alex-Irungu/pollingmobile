@@ -33,10 +33,10 @@ import { ElectionCountdown } from '../../src/components/ElectionCountdown';
 import { EmergencyPanel } from '../../src/components/EmergencyPanel';
 import { Card, SectionLabel, formatNumber, pressedStyle } from '../../src/components/ui';
 import { useAdminUnread } from '../../src/hooks/useChat';
+import { useConfirmSignOut } from '../../src/hooks/useConfirmSignOut';
 import { emergenciesQueryKey } from '../../src/hooks/useEmergencies';
 import { splitMs, useNow } from '../../src/hooks/useNow';
 import { useMe } from '../../src/hooks/useMe';
-import { useAuth } from '../../src/store/auth';
 import { colors, radius, spacing, typography } from '../../src/theme';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -94,7 +94,6 @@ export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { fullName } = useMe();
-  const { signOut } = useAuth();
   const unread = useAdminUnread();
   const queryClient = useQueryClient();
 
@@ -146,12 +145,11 @@ export default function AdminDashboard() {
       ].filter((c) => c.phone)
     : [];
 
-  function confirmSignOut() {
-    Alert.alert('Sign out', 'Sign out of Sentinel on this phone?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
-    ]);
-  }
+  const confirmSignOut = useConfirmSignOut({
+    title: 'Sign out',
+    cancelText: 'Cancel',
+    confirmText: 'Sign out',
+  });
 
   const firstName = fullName?.split(' ')[0] ?? 'there';
 

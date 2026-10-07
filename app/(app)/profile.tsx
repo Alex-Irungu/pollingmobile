@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as api from '../../src/api/endpoints';
 import { Button } from '../../src/components/Button';
 import { Card, DetailRow, LoadingState, SectionLabel } from '../../src/components/ui';
+import { useConfirmSignOut } from '../../src/hooks/useConfirmSignOut';
 import { usePosting } from '../../src/hooks/usePosting';
 import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
 import {
@@ -33,7 +34,6 @@ import {
   requestLocationPermissions,
   startLocationTracking,
 } from '../../src/services/locationTracking';
-import { useAuth } from '../../src/store/auth';
 import { colors, radius, spacing, typography } from '../../src/theme';
 
 function initials(name: string): string {
@@ -55,7 +55,6 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { signOut } = useAuth();
   const { data, isLoading } = usePosting();
 
   const [signingOut, setSigningOut] = useState(false);
@@ -99,23 +98,12 @@ export default function ProfileScreen() {
     }
   }, []);
 
-  const handleLogout = useCallback(() => {
-    Alert.alert(
-      'Log out?',
-      'You will need your email and password to sign in again.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            setSigningOut(true);
-            await signOut();
-          },
-        },
-      ],
-    );
-  }, [signOut]);
+  const handleLogout = useConfirmSignOut({
+    title: 'Log out?',
+    cancelText: 'Cancel',
+    confirmText: 'Logout',
+    onStart: () => setSigningOut(true),
+  });
 
   if (isLoading && !data) {
     return <LoadingState message="Loading your profile" />;

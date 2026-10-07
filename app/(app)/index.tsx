@@ -43,12 +43,12 @@ import { ElectionCountdown } from '../../src/components/ElectionCountdown';
 import { LiveTallyCard } from '../../src/components/LiveTallyCard';
 import { PanicButton } from '../../src/components/PanicButton';
 import { UpdateBanner } from '../../src/components/UpdateBanner';
+import { useConfirmSignOut } from '../../src/hooks/useConfirmSignOut';
 import { useLiveTally } from '../../src/hooks/useLiveTally';
 import { useMe } from '../../src/hooks/useMe';
 import { usePosting } from '../../src/hooks/usePosting';
 import { useSubmissionQueue } from '../../src/hooks/useSubmissionQueue';
 import { flushQueue } from '../../src/services/submissionQueue';
-import { useAuth } from '../../src/store/auth';
 import {
   HIT_SLOP,
   colors,
@@ -62,7 +62,6 @@ export default function MyStationScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isAdmin } = useMe();
-  const { signOut } = useAuth();
   const { data, isLoading, error, refetch, isRefetching } = usePosting();
   const queue = useSubmissionQueue();
   const { data: tally, refetch: refetchTally } = useLiveTally(data?.race?.id);
@@ -81,23 +80,12 @@ export default function MyStationScreen() {
     return () => { if (slowTimer.current) clearTimeout(slowTimer.current); };
   }, [isLoading, data]);
 
-  const handleSignOut = useCallback(() => {
-    Alert.alert(
-      'Sign out?',
-      'You will need your email and password to sign in again.',
-      [
-        { text: 'Stay signed in', style: 'cancel' },
-        {
-          text: 'Sign out',
-          style: 'destructive',
-          onPress: async () => {
-            setSigningOut(true);
-            await signOut();
-          },
-        },
-      ],
-    );
-  }, [signOut]);
+  const handleSignOut = useConfirmSignOut({
+    title: 'Sign out?',
+    cancelText: 'Stay signed in',
+    confirmText: 'Sign out',
+    onStart: () => setSigningOut(true),
+  });
 
   // Admin roles get the admin dashboard; this screen's data endpoint
   // (/agents/me/) would 403 for them anyway.
