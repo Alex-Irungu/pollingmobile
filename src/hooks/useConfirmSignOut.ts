@@ -44,7 +44,8 @@ export function useConfirmSignOut({ title, cancelText, confirmText, onStart }: O
 
     const message = unsent.length
       ? `You still have ${unsent.join(' and ')}. ` +
-        'Nothing is sent while you are signed out. Stay signed in with a signal until it is delivered.'
+        'Nothing is sent while you are signed out, and if someone else signs in on this phone it is discarded. ' +
+        'Stay signed in with a signal until it is delivered.'
       : 'You will need your email and password to sign in again.';
 
     Alert.alert(unsent.length ? 'Unsent items' : title, message, [

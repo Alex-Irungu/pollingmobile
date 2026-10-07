@@ -27,6 +27,8 @@ import * as Network from 'expo-network';
 import { ApiError } from '../api/client';
 import * as api from '../api/endpoints';
 import type { SubmitResultPayload } from '../api/types';
+import { reportError } from './monitoring';
+import { currentOwner, isForeign } from './queueOwner';
 
 const RECORD_KEY = 'sentinel.submissionQueue.v1';
 const PHOTO_DIR = 'queued-submission';
@@ -49,6 +51,9 @@ export interface QueuedRecord {
   /** True when the server looked at the submission and said no. The queue
    * stops retrying -- resending the same figures cannot change the answer. */
   rejected: boolean;
+  /** Who queued it. A different agent signing in on this phone must not send
+   * it as themselves. Absent on records saved by older builds. */
+  owner?: string | null;
 }
 
 export type QueueState =
@@ -122,7 +127,22 @@ async function loadRecord(): Promise<void> {
   } catch {
     record = null;
   }
+  await dropIfForeign();
   notify();
+}
+
+/**
+ * Discard a record queued by a different agent than the one now signed in.
+ * It cannot be delivered as them, and sending it as them would be wrong.
+ */
+async function dropIfForeign(): Promise<void> {
+  if (!record || !isForeign(record.owner, await currentOwner())) return;
+  reportError(new Error('Discarded a queued submission from another agent'), {
+    source: 'submission_queue_foreign',
+  });
+  record = null;
+  deletePersistedPhoto();
+  await saveRecord();
 }
 
 /**
@@ -173,6 +193,7 @@ export async function queueSubmission(input: {
     queuedAt: new Date().toISOString(),
     lastError: null,
     rejected: false,
+    owner: await currentOwner(),
   };
   await saveRecord();
   notify();
@@ -219,6 +240,8 @@ async function doFlush(
   onProgress?: (message: string) => void,
 ): Promise<FlushOutcome> {
   await loadRecord();
+  await dropIfForeign();
+  notify();
   const current = record;
   if (!current || current.rejected) return current ? 'rejected' : 'nothing';
 

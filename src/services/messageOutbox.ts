@@ -25,6 +25,7 @@ import * as Network from 'expo-network';
 import { ApiError } from '../api/client';
 import * as api from '../api/endpoints';
 import { reportError } from './monitoring';
+import { currentOwner, isForeign } from './queueOwner';
 
 const STORE_KEY = 'sentinel.messageOutbox.v1';
 const RETRY_INTERVAL_MS = 20_000;
@@ -39,6 +40,8 @@ export interface OutboxEntry {
   longitude?: number;
   queuedAt: string;
   lastError: string | null;
+  /** Who composed it; see queueOwner.ts. Absent on entries from older builds. */
+  owner?: string | null;
 }
 
 export type OutboxEvent =
@@ -110,6 +113,25 @@ async function load(): Promise<void> {
   } catch {
     entries = [];
   }
+  await dropForeignEntries();
+}
+
+/**
+ * Discard entries composed by a different agent than the one now signed in.
+ * An emergency alert sent under the wrong identity is worse than none.
+ */
+async function dropForeignEntries(): Promise<void> {
+  if (!entries.length) return;
+  const owner = await currentOwner();
+  const kept = entries.filter((e) => !isForeign(e.owner, owner));
+  if (kept.length === entries.length) return;
+  reportError(new Error('Discarded queued messages from another agent'), {
+    source: 'message_outbox_foreign',
+    dropped: String(entries.length - kept.length),
+  });
+  entries = kept;
+  await save();
+  notify();
 }
 
 // ── API ──────────────────────────────────────────────────────────────────── //
@@ -145,6 +167,7 @@ export async function enqueueMessage(input: {
     longitude: input.longitude,
     queuedAt: new Date().toISOString(),
     lastError: null,
+    owner: await currentOwner(),
   };
 
   // An emergency must not wait behind small talk.
@@ -180,6 +203,7 @@ export function flushOutbox(): Promise<void> {
 
 async function doFlush(): Promise<void> {
   await load();
+  await dropForeignEntries();
   if (!entries.length) return;
 
   sending = true;
