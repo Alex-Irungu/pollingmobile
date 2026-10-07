@@ -402,6 +402,29 @@ export interface AgentListItem {
   created_at: string;
 }
 
+/** Live presence for one agent, from /agents/locations/?all=1. Joined with
+ * AgentListItem by id so the directory can show online/offline and today's
+ * check-in without a second roster endpoint. */
+export interface AgentLiveStatus {
+  id: string;
+  full_name: string;
+  phone_number: string;
+  polling_station: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  last_location_at: string | null;
+  /** Last sign of life from the phone (sign-in, heartbeat, ping); null if never. */
+  last_seen_at: string | null;
+  online: boolean;
+  /** Today's arrival check-in, null if the agent has not checked in. */
+  check_in: {
+    id: string;
+    checked_in_at: string;
+    verified: boolean;
+    distance_m: number | null;
+  } | null;
+}
+
 /** One agent thread in the command-centre inbox. */
 export interface InboxConversation {
   id: string;

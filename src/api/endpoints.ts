@@ -14,6 +14,7 @@ import type {
   AdminEvent,
   AdminEventInput,
   AgentListItem,
+  AgentLiveStatus,
   AgentPosting,
   CheckInInfo,
   Attachment,
@@ -429,6 +430,15 @@ export function deleteGroupMember(id: string) {
  * so one fetch serves every keystroke without a network round trip. */
 export function fetchAgents() {
   return apiRequest<AgentListItem[]>('/agents/');
+}
+
+/** Live presence and today's check-in for every active agent. Command-centre
+ * roles only; the directory polls this so "who is online / checked in" stays
+ * close to live without the agent needing to do anything. */
+export function fetchAgentLiveStatus() {
+  return apiRequest<{ count: number; results: AgentLiveStatus[] }>(
+    '/agents/locations/?all=1',
+  );
 }
 
 // ---- Command-centre messaging ---- //

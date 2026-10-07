@@ -115,6 +115,17 @@ export default function AdminDashboard() {
     queryFn: api.fetchPeopleStats,
     staleTime: 60_000,
   });
+  // Same key as the directory, so opening it is instant from this cache.
+  const fieldTeam = useQuery({
+    queryKey: ['admin', 'agentsLive'],
+    queryFn: api.fetchAgentLiveStatus,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  const team = fieldTeam.data?.results ?? [];
+  const teamOnline = team.filter((a) => a.online).length;
+  const teamCheckedIn = team.filter((a) => a.check_in).length;
 
   // Next up: a live event beats the soonest upcoming one.
   const nextEvent: AdminEvent | null = useMemo(() => {
@@ -168,6 +179,7 @@ export default function AdminDashboard() {
             onRefresh={() => {
               void events.refetch();
               void peopleStats.refetch();
+              void fieldTeam.refetch();
               void queryClient.invalidateQueries({ queryKey: emergenciesQueryKey });
             }}
             tintColor={colors.green}
@@ -245,6 +257,40 @@ export default function AdminDashboard() {
             </Text>
           </Card>
         )}
+
+        {/* Field team pulse: the snapshot an aspirant wants at a glance. */}
+        {team.length > 0 ? (
+          <Pressable onPress={() => router.navigate('/(app)/agents')}>
+            <Card style={styles.teamCard}>
+              <View style={styles.teamHeader}>
+                <SectionLabel>Field team</SectionLabel>
+                <View style={styles.teamOnline}>
+                  <View style={styles.teamOnlineDot} />
+                  <Text style={styles.teamOnlineText}>
+                    {formatNumber(teamOnline)} online
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.teamHeadline}>
+                <Text style={styles.teamCount}>{formatNumber(teamCheckedIn)}</Text>
+                {` of ${formatNumber(team.length)} agents checked in`}
+              </Text>
+              <View style={styles.teamBarTrack}>
+                <View
+                  style={[
+                    styles.teamBarFill,
+                    { width: `${Math.round((teamCheckedIn / team.length) * 100)}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.teamHint}>
+                {teamCheckedIn < team.length
+                  ? `${formatNumber(team.length - teamCheckedIn)} still to check in · tap to see who and call them`
+                  : 'Everyone is at their station'}
+              </Text>
+            </Card>
+          </Pressable>
+        ) : null}
 
         {/* Ground network stats */}
         <SectionLabel>Ground network</SectionLabel>
@@ -358,6 +404,35 @@ const styles = StyleSheet.create({
   },
   unreadTitle: { ...typography.bodyStrong, fontSize: 14, color: colors.ink },
   unreadHint: { ...typography.caption, fontSize: 11, color: colors.inkMuted },
+
+  teamCard: { gap: spacing.sm },
+  teamHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  teamOnline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  teamOnlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.verified,
+  },
+  teamOnlineText: { ...typography.label, fontSize: 12, color: colors.verified },
+  teamHeadline: { ...typography.body, color: colors.inkMuted },
+  teamCount: { ...typography.numeric, fontSize: 22, color: colors.ink },
+  teamBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.greenSurface,
+    overflow: 'hidden',
+  },
+  teamBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: colors.verified,
+  },
+  teamHint: { ...typography.caption, fontSize: 11, color: colors.inkFaint },
 
   nextCard: { gap: spacing.sm, borderColor: colors.greenLight, borderWidth: 1 },
   nextTitle: { ...typography.heading, color: colors.ink },
