@@ -115,6 +115,21 @@ export function updateMyLocation(latitude: number, longitude: number) {
   });
 }
 
+/**
+ * "Phone is alive, N items still queued." Feeds the command centre's system
+ * health page; failures are swallowed by the caller (services/heartbeat.ts).
+ */
+export function sendHeartbeat(body: {
+  pending_count: number;
+  oldest_pending_at: string | null;
+  app_version: string;
+}) {
+  return apiRequest<{ recorded: boolean }>('/agents/me/heartbeat/', {
+    method: 'POST',
+    body,
+  });
+}
+
 // --------------------------------------------------------------------------- //
 // Uploads
 // --------------------------------------------------------------------------- //

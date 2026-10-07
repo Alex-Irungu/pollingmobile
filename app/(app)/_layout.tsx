@@ -32,6 +32,7 @@ import {
 } from '../../src/hooks/useChat';
 import { postingQueryKey } from '../../src/hooks/usePosting';
 import { submissionHistoryQueryKey } from '../../src/hooks/useSubmissionHistory';
+import { startHeartbeat, stopHeartbeat } from '../../src/services/heartbeat';
 import { onOutboxEvent, startOutboxWatcher } from '../../src/services/messageOutbox';
 import { registerForPushNotifications } from '../../src/services/pushNotifications';
 import { onQueueSent, startQueueWatcher } from '../../src/services/submissionQueue';
@@ -57,6 +58,7 @@ export default function AppLayout() {
     if (isAdmin) return;
     startQueueWatcher();
     startOutboxWatcher();
+    startHeartbeat();
     const stopQueue = onQueueSent(() => {
       queryClient.invalidateQueries({ queryKey: postingQueryKey });
       queryClient.invalidateQueries({ queryKey: submissionHistoryQueryKey });
@@ -70,6 +72,7 @@ export default function AppLayout() {
     return () => {
       stopQueue();
       stopOutbox();
+      stopHeartbeat();
     };
   }, [queryClient, isAdmin]);
 
